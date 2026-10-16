@@ -7,6 +7,7 @@ import { fmtCurrency } from '@/routes/config/utils'
 import type { Loose } from '@/lib/loose'
 import { COMPANY } from '@/lib/site'
 import { PaymentLogos } from '@/components/landing/PaymentLogos'
+import { CurrencySwitch } from '@/components/CurrencySwitch'
 import { EMPTY_ANSWERS, type FlowAnswers } from './types'
 import { loadFlowDraft, saveFlowDraft, searchWithStep, stepFromSearch } from './draft'
 import { EmailStep, EmotionStep, OccasionStep, RecipientStep, StoryStep, answersGenre } from './steps/BriefSteps'
@@ -34,6 +35,32 @@ const NEXT_LABEL: Record<string, string> = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+/** Что не так с ответами на шаге step; null — шаг заполнен. */
+function stepError(step: string, answers: FlowAnswers): string | null {
+  if (step === 'recipient') {
+    if (!answers.relationship) return 'Выберите, кому дарим песню.'
+    if (!answers.recipientName.trim()) return 'Укажите имя.'
+    if (!answers.recipientGender && (answers.relationship === 'Друг' || answers.relationship === 'Другое')) {
+      return 'Уточните, ему или ей.'
+    }
+  }
+  if (step === 'occasion' && !answers.occasion) return 'Выберите повод.'
+  if (step === 'email' && !EMAIL_RE.test(answers.email.trim())) return 'Укажите корректный email.'
+  if (step === 'emotion' && !answers.emotion && !answersGenre(answers)) return 'Выберите эмоцию или жанр.'
+  if (step === 'story' && !answers.story.trim()) return 'Расскажите хотя бы пару предложений.'
+  return null
+}
+
+/**
+ * Дальше первого незаполненного шага не пускаем: шаг лежит в адресе (`?s=N`),
+ * и по прямой ссылке иначе можно оказаться на оплате с пустой анкетой.
+ */
+function reachableStep(requested: number, answers: FlowAnswers): number {
+  const firstIncomplete = STEPS.findIndex((step) => stepError(step, answers) !== null)
+  const limit = firstIncomplete === -1 ? STEPS.length - 1 : firstIncomplete
+  return Math.max(0, Math.min(requested, limit))
+}
+
 /** Цена из вшитого снимка настроек (frontend/intl/settings.json). */
 function inlinedPrice(): { price: number; original: number | null } {
   const s = (window as Loose).__SETTINGS__
@@ -48,9 +75,16 @@ export function IntlFlowRoute() {
   const [draft] = useState(() => loadFlowDraft(ARM))
   const [answers, setAnswers] = useState<FlowAnswers>(draft?.answers ?? EMPTY_ANSWERS)
   const lastStep = STEPS.length - 1
-  const [stepIndex, setStepIndex] = useState(() => Math.min(stepFromSearch(search) ?? draft?.stepIndex ?? 0, lastStep))
+  const [stepIndex, setStepIndex] = useState(() =>
+    reachableStep(stepFromSearch(search) ?? draft?.stepIndex ?? 0, draft?.answers ?? EMPTY_ANSWERS),
+  )
   const [error, setError] = useState<string | null>(null)
   const current = STEPS[stepIndex]
+
+  const answersRef = useRef(answers)
+  useEffect(() => {
+    answersRef.current = answers
+  }, [answers])
 
   const stepRef = useRef(stepIndex)
   useEffect(() => {
@@ -68,9 +102,10 @@ export function IntlFlowRoute() {
     [navigate, pathname, lastStep],
   )
 
-  // У текущего шага должна быть своя запись в истории — «назад» браузера ходит по шагам.
+  // У текущего шага должна быть своя запись в истории — «назад» браузера ходит
+  // по шагам. Номер в адресе правится и когда шаг оказался недоступен.
   useEffect(() => {
-    if (stepFromSearch(window.location.search) === null) {
+    if (stepFromSearch(window.location.search) !== stepRef.current) {
       navigate({ pathname, search: searchWithStep(window.location.search, stepRef.current) }, { replace: true })
     }
   }, [navigate, pathname])
@@ -78,9 +113,9 @@ export function IntlFlowRoute() {
   const urlStep = stepFromSearch(search)
   useEffect(() => {
     if (urlStep === null || urlStep === stepRef.current) return
-    setStepIndex(Math.min(urlStep, lastStep))
+    setStepIndex(reachableStep(urlStep, answersRef.current))
     window.scrollTo(0, 0)
-  }, [urlStep, lastStep])
+  }, [urlStep])
 
   useEffect(() => {
     saveFlowDraft({ flowVariant: ARM, answers, orderRef: null, stepIndex, payVia: 'order' })
@@ -91,20 +126,7 @@ export function IntlFlowRoute() {
     setError(null)
   }, [])
 
-  const validate = (): string | null => {
-    if (current === 'recipient') {
-      if (!answers.relationship) return 'Выберите, кому дарим песню.'
-      if (!answers.recipientName.trim()) return 'Укажите имя.'
-      if (!answers.recipientGender && (answers.relationship === 'Друг' || answers.relationship === 'Другое')) {
-        return 'Уточните, ему или ей.'
-      }
-    }
-    if (current === 'occasion' && !answers.occasion) return 'Выберите повод.'
-    if (current === 'email' && !EMAIL_RE.test(answers.email.trim())) return 'Укажите корректный email.'
-    if (current === 'emotion' && !answers.emotion && !answersGenre(answers)) return 'Выберите эмоцию или жанр.'
-    if (current === 'story' && !answers.story.trim()) return 'Расскажите хотя бы пару предложений.'
-    return null
-  }
+  const validate = () => stepError(current, answers)
 
   const handleNext = () => {
     const invalid = validate()
@@ -171,6 +193,10 @@ function PaymentStep({
       primaryDisabled={!agreed}
     >
       <div className="rounded-2xl border border-[#EFE4D2] bg-white p-4">
+        <div className="mb-2 flex items-center justify-between gap-3 text-xs text-[#9c9186]">
+          <span>Валюта</span>
+          <CurrencySwitch />
+        </div>
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-sm text-[#6b6259]">К оплате</span>
           <span className="text-2xl font-bold text-[#151210]">

@@ -71,7 +71,7 @@ export function ContactPage() {
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
                 <h3 className="font-medium text-gray-800 mb-1">Способы оплаты</h3>
-                <p className="text-sm text-gray-500">Банковские карты Visa и Mastercard через платёжный сервис UnitPay, оплата в долларах США. Данные карты обрабатывает UnitPay — мы их не видим.</p>
+                <p className="text-sm text-gray-500">Банковские карты Visa и Mastercard через платёжный сервис UnitPay, оплата в долларах США или российских рублях (переключатель «$ / ₽» на сайте). Данные карты обрабатывает UnitPay — мы их не видим.</p>
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
                 <h3 className="font-medium text-gray-800 mb-1">Возврат и отмена</h3>

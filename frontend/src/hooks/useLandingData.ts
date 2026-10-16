@@ -7,6 +7,7 @@ import type { ActivityToastConfig } from '@/components/activity-toast/ActivityTo
 import type { TrackItem } from '@/components/landing/AudioSamplesSection'
 import { resolveSectionOrder, resolveSectionVisibility } from '@/lib/landingSections'
 import { fmtCurrency, ruDaysPhrase, ruHoursPhrase } from '@/routes/config/utils'
+import { CURRENCY, inCurrency } from '@/lib/currency'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -662,8 +663,8 @@ export function useLandingData(): LandingData {
       provider: { '@id': `${origin}/#organization` },
       offers: {
         '@type': 'Offer',
-        price: String(paymentAmount ?? 25),
-        priceCurrency: 'USD',
+        price: String(inCurrency(paymentAmount ?? 25)),
+        priceCurrency: CURRENCY,
         availability: 'https://schema.org/InStock',
       },
     }

@@ -4,7 +4,7 @@ function sanitizeHtml(html: string): string {
   return html.replace(/<\/?(?!strong|em|br\s*\/?)(?!span\b)([a-z][a-z0-9]*)\b[^>]*>/gi, '')
 }
 
-type GiftItem = { icon: string; name: string; price: string }
+type GiftItem = { icon: string; name: string; /** от скольки стоит, $ */ fromUsd: number }
 type ChecklistItem = { text: string }
 
 type Props = {
@@ -23,10 +23,10 @@ type Props = {
 }
 
 const defaultGiftItems: GiftItem[] = [
-  { icon: '🧴', name: 'Парфюм', price: 'от $120' },
-  { icon: '⌚', name: 'Часы', price: 'от $180' },
-  { icon: '👔', name: 'Одежда', price: 'от $60' },
-  { icon: '🎮', name: 'Гаджет', price: 'от $350' },
+  { icon: '🧴', name: 'Парфюм', fromUsd: 120 },
+  { icon: '⌚', name: 'Часы', fromUsd: 180 },
+  { icon: '👔', name: 'Одежда', fromUsd: 60 },
+  { icon: '🎮', name: 'Гаджет', fromUsd: 350 },
 ]
 
 const defaultChecklistItems: ChecklistItem[] = [
@@ -65,7 +65,7 @@ export function ComparisonSection({
               <div key={i} className="flex flex-col items-center gap-2">
                 <span className="text-4xl mb-2">{item.icon}</span>
                 <span className="font-medium text-gray-900">{item.name}</span>
-                <span className="text-xs font-bold bg-gray-200 px-2 py-1 rounded text-gray-600">{item.price}</span>
+                <span className="text-xs font-bold bg-gray-200 px-2 py-1 rounded text-gray-600">от {fmtCurrency(item.fromUsd)}</span>
               </div>
             ))}
           </div>

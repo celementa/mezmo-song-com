@@ -4,6 +4,7 @@ import { Play, Pause } from 'lucide-react'
 import type { Loose } from '@/lib/loose'
 import { SeekBar } from '@/components/landing/SeekBar'
 import { PaymentLogos } from '@/components/landing/PaymentLogos'
+import { CurrencySwitch } from '@/components/CurrencySwitch'
 import { COMPANY, LEGAL_LINKS } from '@/lib/site'
 import type { LandingData } from '@/hooks/useLandingData'
 import type { TemplateDef } from './types'
@@ -289,6 +290,7 @@ function GoldRender(data: LandingData) {
           <a href="#faq" className="hover:opacity-70 transition">Гарантия</a>
         </nav>
         <div className="flex items-center gap-3 md:gap-5">
+          <CurrencySwitch />
           <Link
             to={configHref}
             className="px-5 py-2.5 rounded-full text-white font-bold text-sm transition-all hover:opacity-90"
