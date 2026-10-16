@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 72" width="260" height="72">
+  <!-- Heart outline with play button inside -->
+  <g transform="translate(8, 8)">
+    <!-- Heart shape -->
+    <path d="M28 52 C28 52 4 36 4 20 C4 11.2 11.2 4 20 4 C24.4 4 28 7.2 28 7.2 C28 7.2 31.6 4 36 4 C44.8 4 52 11.2 52 20 C52 36 28 52 28 52Z"
+          fill="none" stroke="#E05070" stroke-width="3.5" stroke-linejoin="round"/>
+    <!-- Play triangle -->
+    <polygon points="23,16 23,34 38,25" fill="#E05070"/>
+  </g>
+
+  <!-- Brand name -->
+  <text x="72" y="34" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="26" fill="#2D2D2D" letter-spacing="-0.5">Mezmo</text>
+
+  <!-- Tagline -->
+  <text x="72" y="52" font-family="Arial, Helvetica, sans-serif" font-weight="400" font-size="13" fill="#888888">Твоя музыка — Твоя история</text>
+</svg>

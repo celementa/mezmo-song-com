@@ -1,0 +1,16 @@
+{
+  "name": "mezmo-song-com",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "packages/shared"
+  ],
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w frontend",
+    "check": "scripts/check-intl-bundle.sh frontend/dist",
+    "dev": "npm run dev -w frontend",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,5 @@
+node_modules/
+frontend/dist/
+packages/shared/dist/
+.DS_Store
+.env.local
