@@ -3,6 +3,8 @@ import { Link, useLocation } from 'react-router-dom'
 import { Play, Pause } from 'lucide-react'
 import type { Loose } from '@/lib/loose'
 import { SeekBar } from '@/components/landing/SeekBar'
+import { PaymentLogos } from '@/components/landing/PaymentLogos'
+import { COMPANY, LEGAL_LINKS } from '@/lib/site'
 import type { LandingData } from '@/hooks/useLandingData'
 import type { TemplateDef } from './types'
 
@@ -287,9 +289,6 @@ function GoldRender(data: LandingData) {
           <a href="#faq" className="hover:opacity-70 transition">Гарантия</a>
         </nav>
         <div className="flex items-center gap-3 md:gap-5">
-          <Link to="/account" className="text-sm font-medium hover:opacity-70 transition" style={{ color: '#151210' }}>
-            Войти
-          </Link>
           <Link
             to={configHref}
             className="px-5 py-2.5 rounded-full text-white font-bold text-sm transition-all hover:opacity-90"
@@ -415,6 +414,14 @@ function GoldRender(data: LandingData) {
             >
               Создать песню →
             </Link>
+            {/* Цена услуги должна быть видна на сайте до оплаты (требование
+                UnitPay), а бейдж цены в hero на мобилке скрыт. */}
+            <span className="text-sm font-semibold" style={{ color: '#F2C572' }}>
+              {fmtCurrency(paymentAmount)}
+              {originalAmount && originalAmount > (paymentAmount ?? 0) && (
+                <span className="ml-2 font-normal line-through" style={{ color: '#a89d8c' }}>{fmtCurrency(originalAmount)}</span>
+              )}
+            </span>
           </div>
 
           {/* Мобилка: вместо аудиоплеера — видео-реакция (фидбек Aug 2026). Аудиопример
@@ -1265,72 +1272,27 @@ function GoldRender(data: LandingData) {
 
       {/* === FOOTER WITH SOCIAL ICONS === */}
       <footer className="text-center py-12 px-5">
-        <div className="flex justify-center gap-4 mb-8">
-          {/* VK */}
-          <a
-            href="https://vk.com/mezmomusic"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center w-11 h-11 rounded-full hover:opacity-80 transition"
-            style={{
-              background: '#151210',
-              border: '1px solid #8a6621',
-              color: '#F2C572',
-            }}
-            title="VKontakte"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="m9.489.004.729-.003h3.564l.73.003.914.01.433.007.418.011.403.014.388.016.374.021.36.025.345.03.333.033c1.74.196 2.933.616 3.833 1.516.9.9 1.32 2.092 1.516 3.833l.034.333.029.346.025.36.02.373.025.588.012.41.013.644.009.915.004.98-.001 3.313-.003.73-.01.914-.007.433-.011.418-.014.403-.016.388-.021.374-.025.36-.03.345-.033.333c-.196 1.74-.616 2.933-1.516 3.833-.9.9-2.092 1.32-3.833 1.516l-.333.034-.346.029-.36.025-.373.02-.588.025-.41.012-.644.013-.915.009-.98.004-3.313-.001-.73-.003-.914-.01-.433-.007-.418-.011-.403-.014-.388-.016-.374-.021-.36-.025-.345-.03-.333-.033c-1.74-.196-2.933-.616-3.833-1.516-.9-.9-1.32-2.092-1.516-3.833l-.034-.333-.029-.346-.025-.36-.02-.373-.025-.588-.012-.41-.013-.644-.009-.915-.004-.98.001-3.313.003-.73.01-.914.007-.433.011-.418.014-.403.016-.388.021-.374.025-.36.03-.345.033-.333c.196-1.74.616-2.933 1.516-3.833.9-.9 2.092-1.32 3.833-1.516l.333-.034.346-.029.36-.025.373-.02.588-.025.41-.012.644-.013.915-.009ZM6.79 7.3H4.05c.13 6.24 3.25 9.99 8.72 9.99h.31v-3.57c2.01.2 3.53 1.67 4.14 3.57h2.84c-.78-2.84-2.83-4.41-4.11-5.01 1.28-.74 3.08-2.54 3.51-4.98h-2.58c-.56 1.98-2.22 3.78-3.8 3.95V7.3H10.5v6.92c-1.6-.4-3.62-2.34-3.71-6.92Z" />
-            </svg>
-          </a>
-
-          {/* TikTok */}
-          <a
-            href="https://www.tiktok.com/@mezmo.ru"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center w-11 h-11 rounded-full hover:opacity-80 transition"
-            style={{
-              background: '#151210',
-              border: '1px solid #8a6621',
-              color: '#F2C572',
-            }}
-            title="TikTok"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" />
-            </svg>
-          </a>
-
-          {/* Telegram */}
-          <a
-            href="https://t.me/mezmomusic"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center w-11 h-11 rounded-full hover:opacity-80 transition"
-            style={{
-              background: '#151210',
-              border: '1px solid #8a6621',
-              color: '#F2C572',
-            }}
-            title="Telegram"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
-            </svg>
-          </a>
+        <div className="text-xs space-y-1 mb-6" style={{ color: '#6b6558' }}>
+          <div className="font-semibold" style={{ color: '#151210' }}>{COMPANY.name}</div>
+          <div>Рег. № {COMPANY.regNo}</div>
+          <div>{COMPANY.address}</div>
+          <div>
+            <a href={`mailto:${COMPANY.email}`} className="hover:opacity-70 transition">{COMPANY.email}</a>
+            {' · '}
+            <a href={`tel:${COMPANY.phone.replace(/[^\d+]/g, '')}`} className="hover:opacity-70 transition">{COMPANY.phone}</a>
+          </div>
         </div>
 
+        <PaymentLogos className="justify-center mb-6" />
+
         <div className="text-xs" style={{ color: '#6b6558' }}>
-          <div className="mb-2">Твоя музыка — Твоя история</div>
-          <div className="mb-2">
-            <a href="/privacy" className="hover:opacity-70 transition">Конфиденциальность</a>
-            {' · '}
-            <a href="/terms" className="hover:opacity-70 transition">Условия</a>
-            {' · '}
+          <div className="mb-2 flex flex-wrap justify-center gap-x-3 gap-y-1">
+            {LEGAL_LINKS.map((l) => (
+              <a key={l.doc} href={`/${l.doc}`} className="hover:opacity-70 transition">{l.label}</a>
+            ))}
             <a href="/contacts" className="hover:opacity-70 transition">Контакты</a>
           </div>
-          <div>© 2026 Все права защищены.</div>
+          <div>© 2026 {COMPANY.name}. Все права защищены.</div>
         </div>
       </footer>
 

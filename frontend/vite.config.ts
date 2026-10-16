@@ -1,11 +1,25 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
+
+const root = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   plugins: [
     react(),
+    {
+      // Бэкенда у mezmo-song.com нет: снимок настроек лендинга вшивается в
+      // index.html, иначе SPA не знает дизайна и цены и падает в classic.
+      // `<` экранируется, чтобы текст настроек не закрыл тег script.
+      name: 'inline-settings',
+      transformIndexHtml(html: string) {
+        const settings = readFileSync(path.join(root, 'intl/settings.json'), 'utf8')
+        const json = JSON.stringify(JSON.parse(settings)).replace(/</g, '\\u003c')
+        return html.replace('<!--__SETTINGS__-->', `<script>window.__SETTINGS__=${json}</script>`)
+      },
+    },
     {
       // Снимаем render-blocking с CSS-бандла: hero в #root на инлайн-стилях,
       // поэтому первый paint не должен ждать загрузки 57 КБ CSS.
@@ -24,7 +38,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(path.dirname(fileURLToPath(import.meta.url)), './src'),
+      '@': path.resolve(root, './src'),
     },
   },
   build: {

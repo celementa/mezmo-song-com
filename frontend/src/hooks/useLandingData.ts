@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { apiPost } from '@/lib/http'
-import { getAttribution } from '@/lib/attribution'
-import { isLocalhost } from '@/lib/isLocalhost'
 import type { Loose } from '@/lib/loose'
 import { cachedSettingsGet } from '@/lib/settingsCache'
 import { useThemeSlug } from '@/features/theme/ThemeContext'
@@ -505,7 +502,7 @@ function sanitizeHtml(html: string): string {
 
 function fmtCurrencyGlobal(amt: number | null | undefined) {
   if (amt === 0) return 'Бесплатно'
-  if (amt === null || amt === undefined) return fmtCurrency(2990)
+  if (amt === null || amt === undefined) return fmtCurrency(25)
   return fmtCurrency(amt)
 }
 
@@ -593,29 +590,7 @@ export function useLandingData(): LandingData {
 
   const fmtCurrency = fmtCurrencyGlobal
 
-  // --- Tracking ---
-  useEffect(() => {
-    // Localhost не трекается, КРОМЕ Vite-дев-стенда: там визиты пишутся в
-    // локальную SQLite и нужны дашборду Grafana (GRAFANA.md) — без них
-    // A/B-панели пусты, ведь конверсия считается от визита. import.meta.env.DEV
-    // в прод-бандле false на этапе сборки, поведение прода не меняется.
-    if (isLocalhost() && !import.meta.env.DEV) return
-    try {
-      let sid = sessionStorage.getItem('_sid')
-      if (!sid) {
-        sid = crypto.randomUUID()
-        sessionStorage.setItem('_sid', sid)
-      }
-      apiPost('/api/public/track', {
-        path: themeSlug ? `/${themeSlug}` : '/',
-        sessionId: sid,
-        themeSlug: themeSlug ?? null,
-        attribution: getAttribution(),
-      }).catch(() => {})
-    } catch {
-      // визит — телеметрия: её сбой не должен ломать рендер лендинга
-    }
-  }, [])
+  // Визиты не пишутся: у mezmo-song.com нет бэкенда (/api/public/track).
 
   // --- Delivery ETA ---
   const deliveryEta = useMemo<DeliveryEta>(() => {
@@ -687,8 +662,8 @@ export function useLandingData(): LandingData {
       provider: { '@id': `${origin}/#organization` },
       offers: {
         '@type': 'Offer',
-        price: String(paymentAmount ?? 2990),
-        priceCurrency: 'RUB',
+        price: String(paymentAmount ?? 25),
+        priceCurrency: 'USD',
         availability: 'https://schema.org/InStock',
       },
     }

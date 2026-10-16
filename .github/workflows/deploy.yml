@@ -1,0 +1,63 @@
+name: Deploy mezmo-song.com
+
+# Пуш в main собирает статику, проверяет бандл и выкладывает её на сервер.
+# Ручной перезапуск — Actions → Deploy mezmo-song.com → Run workflow.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Две выкладки одновременно перемешали бы файлы на сервере.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+
+      # Падает, если в бандл попала аналитика или домен .ru, пропал noindex,
+      # canonical на .com, снимок настроек или запрет в robots.txt.
+      - name: Check bundle
+        run: npm run check
+
+      # Ключ на сервере привязан к rrsync: им можно только писать файлы в
+      # /var/www/mezmo-song.com от пользователя deploy-intl — ни шелла, ни root.
+      # Ключ хоста закреплён в секрете, а не берётся ssh-keyscan на лету.
+      - name: Upload to 109.248.42.189
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_deploy
+          echo "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy
+          # --delay-updates/--delete-after: новые файлы подменяются в конце
+          # пачкой, старые удаляются последними — без полусобранного сайта.
+          rsync -rltz --delete-after --delay-updates --chmod=D755,F644 \
+            -e "ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
+            frontend/dist/ deploy-intl@109.248.42.189:/
+
+      - name: Smoke
+        run: |
+          entry=$(grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' frontend/dist/index.html | head -1)
+          page=$(curl -fsS https://mezmo-song.com/)
+          echo "$page" | grep -qF "$entry" || { echo "на сайте не новая сборка (ждали $entry)" >&2; exit 1; }
+          curl -fsS -o /dev/null "https://mezmo-song.com$entry"
+          for p in /config /terms /privacy /security /consent /contacts; do
+            curl -fsS -o /dev/null "https://mezmo-song.com$p" || { echo "не открывается $p" >&2; exit 1; }
+          done
+          echo "mezmo-song.com отдаёт $entry"

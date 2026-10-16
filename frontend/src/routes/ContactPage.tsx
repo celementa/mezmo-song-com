@@ -1,36 +1,10 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Mail, Clock } from 'lucide-react'
+import { ArrowLeft, Mail, Phone } from 'lucide-react'
 
-import { cachedSettingsGet } from '@/lib/settingsCache'
-
-type FooterSettings = {
-  email?: string
-  companyName?: string
-}
-
-const DEFAULT_EMAIL = 'support@example.ru'
+import { COMPANY } from '@/lib/site'
 
 export function ContactPage() {
-  const [footer, setFooter] = useState<FooterSettings>({})
-
-  useEffect(() => {
-    let cancelled = false
-    cachedSettingsGet<{ publicSiteConfig?: { footer?: FooterSettings } | null }>('/api/public/settings')
-      .then((res) => {
-        if (cancelled) return
-        const f = res?.publicSiteConfig?.footer
-        if (f && typeof f === 'object') setFooter(f)
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const email = (footer.email && footer.email.trim()) || DEFAULT_EMAIL
-  const siteHost = typeof window !== 'undefined' ? window.location.host : ''
-  const siteUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  const email = COMPANY.email
 
   return (
     <div className="min-h-screen bg-white">
@@ -56,13 +30,17 @@ export function ContactPage() {
             <span className="text-sm font-medium text-rose-500">{email}</span>
           </a>
 
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-gray-200 p-6 text-center">
+          <a
+            href={`tel:${COMPANY.phone.replace(/[^\d+]/g, '')}`}
+            className="group flex flex-col items-center gap-3 rounded-xl border border-gray-200 p-6 text-center transition-all hover:border-rose-200 hover:shadow-md"
+          >
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-500">
-              <Clock className="h-5 w-5" />
+              <Phone className="h-5 w-5" />
             </div>
-            <h3 className="font-semibold text-gray-800">Время ответа</h3>
-            <p className="text-sm text-gray-500">Обычно в течение 1 рабочего дня</p>
-          </div>
+            <h3 className="font-semibold text-gray-800">Телефон</h3>
+            <p className="text-sm text-gray-500">Обычно отвечаем в течение 1 рабочего дня</p>
+            <span className="text-sm font-medium text-rose-500">{COMPANY.phone}</span>
+          </a>
         </div>
 
         <div className="space-y-8 text-gray-600 text-[15px] leading-relaxed">
@@ -71,7 +49,7 @@ export function ContactPage() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between py-2 border-b border-gray-100">
                 <span className="text-gray-500">Пн–Пт</span>
-                <span className="font-medium text-gray-700">10:00 – 19:00 МСК</span>
+                <span className="font-medium text-gray-700">10:00 – 19:00 (UTC+3)</span>
               </div>
               <div className="flex justify-between py-2">
                 <span className="text-gray-500">Сб–Вс</span>
@@ -93,19 +71,26 @@ export function ContactPage() {
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
                 <h3 className="font-medium text-gray-800 mb-1">Способы оплаты</h3>
-                <p className="text-sm text-gray-500">Банковские карты и другие методы ЮKassa / выбранного провайдера — см. на шаге оплаты.</p>
+                <p className="text-sm text-gray-500">Банковские карты Visa и Mastercard через платёжный сервис UnitPay, оплата в долларах США. Данные карты обрабатывает UnitPay — мы их не видим.</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-4">
+                <h3 className="font-medium text-gray-800 mb-1">Возврат и отмена</h3>
+                <p className="text-sm text-gray-500">
+                  Условия — в разделе 6{' '}
+                  <Link to="/terms" className="text-rose-600 hover:underline">Пользовательского соглашения</Link>. Напишите нам с номером заказа или email, на который он оформлен.
+                </p>
               </div>
             </div>
           </section>
 
           <section className="text-center py-6">
             <div className="p-6 rounded-xl bg-gray-50">
-              <p className="font-semibold text-gray-800 mb-1">Сервис персональных музыкальных композиций</p>
-              {siteHost && (
-                <a href={siteUrl} className="text-sm text-rose-500 hover:underline mt-2 inline-block">
-                  {siteHost}
-                </a>
-              )}
+              <p className="font-semibold text-gray-800 mb-1">{COMPANY.name}</p>
+              <p className="text-sm text-gray-500">Регистрационный номер {COMPANY.regNo}</p>
+              <p className="text-sm text-gray-500">{COMPANY.address}</p>
+              <a href={`https://${COMPANY.domain}`} className="text-sm text-rose-500 hover:underline mt-2 inline-block">
+                {COMPANY.domain}
+              </a>
             </div>
           </section>
         </div>

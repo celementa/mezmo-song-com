@@ -1,0 +1,229 @@
+{
+  "agreementEnabled": false,
+  "defaultThemeSlug": null,
+  "deliveryDelayHours": 0,
+  "design": "gold",
+  "emailEnabled": true,
+  "emailOtpEnabled": false,
+  "headScripts": null,
+  "instantEnabled": true,
+  "maintenanceEmail": null,
+  "maintenanceEnabled": false,
+  "maintenanceFollowText": null,
+  "maintenanceHeadline": null,
+  "maintenanceInstagramUrl": null,
+  "maintenanceMessage": null,
+  "manualConfirmationEnabled": false,
+  "metaPixelId": null,
+  "metaPixelStep1Script": null,
+  "metaPixelStep4Script": null,
+  "metaPixelWishlistId": null,
+  "originalAmount": 75,
+  "paymentAmount": 25,
+  "paymentsEnabled": true,
+  "publicSiteConfig": {
+    "colors": {
+      "accentColor": "#D4AF37",
+      "accentTextColor": "#1A1918",
+      "bgColor1": "#FDFBF7",
+      "bgColor2": "#FFFFFF",
+      "buttonColor": "#D4AF37",
+      "buttonTextColor": "#1A1918"
+    },
+    "faqSection": {
+      "headline": "Частые вопросы",
+      "items": [
+        {
+          "a": "Да, каждую песню пишет живой человек — профессиональный автор. ИИ помогает с мелодией и аранжировкой.",
+          "q": "Используете ли вы настоящих авторов?"
+        },
+        {
+          "a": "Обычно 10–30 минут. Срок может быть дольше в часы пиков.",
+          "q": "Сколько ждать готовую песню?"
+        },
+        {
+          "a": "Да, возврат 100%, если не понравится. Дорабатываем бесплатно, пока не станет ок.",
+          "q": "Есть ли гарантия?"
+        },
+        {
+          "a": "Поп-баллада, акустика, рок и другие. Выбираете при оформлении заказа.",
+          "q": "Какие жанры доступны?"
+        },
+        {
+          "a": "Живой автор пишет слова под вашу историю, ИИ помогает с музыкой. Не шаблон, индивидуальная песня.",
+          "q": "Это не просто ИИ без участия человека?"
+        },
+        {
+          "a": "Да, подходит для дня рождения, годовщины, предложения, выпускного, просто так. Любой повод — главное история.",
+          "q": "Можно подарить на любой праздник?"
+        }
+      ]
+    },
+    "footer": {
+      "companyName": "Mezmo",
+      "disclaimer": "",
+      "email": "support@mezmo-song.com"
+    },
+    "heroCheckmarks": [
+      "Студийное качество",
+      "Быстрая генерация",
+      "Файл для скачивания"
+    ],
+    "howItWorksSection": {
+      "backgroundColor": "#030712",
+      "ctaButtonText": "Создать свою песню",
+      "headline": "Три шага к незабываемому моменту",
+      "label": "Просто",
+      "steps": [
+        {
+          "desc": "3 минуты на заполнение формы",
+          "icon": "✍️",
+          "title": "Расскажите историю"
+        },
+        {
+          "desc": "Текст и музыку создаёт ИИ",
+          "icon": "🎵",
+          "title": "Создаём песню"
+        },
+        {
+          "desc": "Менее чем за 24 часа",
+          "icon": "📧",
+          "title": "Доставляем на почту"
+        }
+      ]
+    },
+    "landing": {
+      "audioSamples": {
+        "nowPlaying": {
+          "audioUrl": "/audio/sample-anna.mp3",
+          "metaText": "Поп-баллада",
+          "name": "Для Анны — моя любовь",
+          "quote": "Каждый наш вечер, с того неловкого первого свидания…",
+          "thumbnailUrl": null,
+          "time": "3:23"
+        },
+        "playlist": [
+          {
+            "audioUrl": "/audio/sample-maxim.mp3",
+            "ctaLabel": "СЛУШАТЬ",
+            "subtitle": "Акустика • 3:20",
+            "thumbnailUrl": null,
+            "title": "Для Максима — 10 лет вместе"
+          },
+          {
+            "audioUrl": "/audio/sample-olya.mp3",
+            "ctaLabel": "СЛУШАТЬ",
+            "subtitle": "Поп • 3:29",
+            "thumbnailUrl": null,
+            "title": "Для Оли — это наша история"
+          }
+        ]
+      },
+      "footerCta": {
+        "headline": "Подарите то, что запомнят навсегда",
+        "subtitle": "Тысячи людей уже увидели искреннюю благодарность в глазах тех, кому сделали такой подарок. Ваша очередь."
+      },
+      "heroHeadline": {
+        "line1": "Она включила запись —",
+        "line2": "и растрогалась на первой строчке"
+      },
+      "heroMedia": {
+        "imageUrl": "/images/hero-poster.jpg",
+        "mode": "video",
+        "videoBelowPrice": false,
+        "videoThumbnailUrl": "",
+        "videoUrl": "/hero.mp4"
+      },
+      "heroOverlay": {
+        "authorAvatarUrl": "https://images.unsplash.com/photo-1530254541043-129f4c372200?w=200&h=200&fit=crop",
+        "authorLocation": "Москва",
+        "authorName": "Марина",
+        "quote": "Не дослушал до конца припева…"
+      },
+      "heroPlayer": {
+        "audioUrl": null,
+        "authorAvatarUrl": "https://images.unsplash.com/photo-1530254541043-129f4c372200?w=200&h=200&fit=crop",
+        "authorName": "Александр",
+        "authorSubline": "СПб • 2026",
+        "cornerBadgeText": "Спецпредложение",
+        "enabled": true,
+        "playingBadgeText": "Сейчас",
+        "quote": "Сдерживался — не получилось.",
+        "verifiedBadgeText": "Проверенный заказ"
+      },
+      "heroSubtext": "Персональная песня с историей и именем близкого. Текст и музыку создаёт ИИ, доставляем сразу — не через сутки."
+    },
+    "logoUrl": "/logo.svg",
+    "miscText": {
+      "ctaButtonText": "Создать свою песню",
+      "heroChipsHeadline": "Для кого песня?",
+      "heroCtaButtonText": "Создать свою песню",
+      "heroStarLine": "★★★★★ 12 400+ песен",
+      "heroTagline": "",
+      "mobileCtaQuotaBadge": ""
+    },
+    "promoBanner": {
+      "countdownLabel": "🎵 Специальное предложение",
+      "countdownTargetDate": "2027-02-14",
+      "enabled": false,
+      "evergreenCycleHours": 24,
+      "evergreenEnabled": false,
+      "promoBadgeText": "🎁 Скидка для новых клиентов"
+    },
+    "reviews": {
+      "items": [
+        {
+          "authorName": "Галя • Telegram",
+          "imageUrl": "/images/review-telegram-galya.png",
+          "style": "image"
+        },
+        {
+          "authorName": "Дмитрий Р. • WhatsApp",
+          "imageUrl": "/images/review-whatsapp-proposal.png",
+          "style": "image"
+        },
+        {
+          "authorName": "Ольга В. • MAX",
+          "imageUrl": "/images/review-max-olga.png",
+          "style": "image"
+        }
+      ],
+      "sectionHeadline": "Говорят наши клиенты",
+      "sectionLabel": "Реакции получателей",
+      "sectionSubtext": "2 847+ довольных клиентов"
+    },
+    "statsBar": {
+      "items": [
+        {
+          "label": "получателей растрогались",
+          "val": "96%"
+        },
+        {
+          "label": "песен создано",
+          "val": "12 400+"
+        },
+        {
+          "label": "до готовой песни",
+          "val": "10–30 мин"
+        },
+        {
+          "label": "средняя оценка",
+          "val": "4.9 ★"
+        }
+      ]
+    },
+    "trustBadges": {
+      "badge1": "★★★★★ 12 400+ песен",
+      "badge2": "10–30 минут",
+      "badge3": "Возврат 100%"
+    },
+    "upsell": {
+      "upsellMode": "post-payment"
+    }
+  },
+  "splitTestActive": false,
+  "tiktokPixelId": null,
+  "tiktokPixelStep1Script": null,
+  "tiktokPixelStep4Script": null,
+  "trackTestOrders": false
+}

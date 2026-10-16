@@ -1,48 +1,6 @@
 <!doctype html>
 <html lang="ru">
   <head>
-    <!-- Google Tag Manager + Яндекс.Метрика — отложенная загрузка (по первому взаимодействию
-         или через 3.5с), чтобы ~455 КиБ аналитики не били по LCP/TBT.
-         dataLayer инициализируется сразу: события из приложения очередятся и обработаются
-         при загрузке GTM. Отключён на localhost, чтобы тесты не слали события.
-
-         Метрика грузится СВОИМ скриптом, а не тегом внутри GTM: у части российских
-         провайдеров googletagmanager.com режется по TLS, и вместе с GTM пропадала
-         единственная доступная в РФ аналитика (mc.yandex.ru при этом открывается).
-         Парный тег `cHTML - YM - base tag` в контейнере поставлен на паузу. -->
-    <script>(function(){var h=location.hostname;if(h==='localhost'||h==='127.0.0.1'||h==='::1'||h.endsWith('.local'))return;
-    var w=window,d=document,l='dataLayer',i='GTM-N9THMZKK',ymId=110968609;w[l]=w[l]||[];
-    var loaded=false,evts=['scroll','pointerdown','touchstart','keydown'],t;
-    function inject(src){var f=d.getElementsByTagName('script')[0],j=d.createElement('script');
-      j.async=true;j.src=src;f.parentNode.insertBefore(j,f);}
-    function load(){if(loaded)return;loaded=true;clearTimeout(t);
-      evts.forEach(function(e){w.removeEventListener(e,load)});
-      w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});
-      inject('https://www.googletagmanager.com/gtm.js?id='+i);
-      /* w.ym уже определён — счётчик подняли тегом GTM, второй init Метрика игнорирует */
-      if(w.ym)return;
-      w.ym=function(){(w.ym.a=w.ym.a||[]).push(arguments)};w.ym.l=1*new Date();
-      inject('https://mc.yandex.ru/metrika/tag.js?id='+ymId);
-      w.ym(ymId,'init',{ssr:true,webvisor:true,clickmap:true,ecommerce:'dataLayer',
-        referrer:d.referrer,url:location.href,accurateTrackBounce:true,trackLinks:true});}
-    w.__gtmLoad=load; /* форс-загрузка для критичных событий (purchase) */
-    evts.forEach(function(e){w.addEventListener(e,load,{once:true,passive:true})});
-    t=setTimeout(load,3500);})();</script>
-    <!-- End Google Tag Manager + Яндекс.Метрика -->
-
-    <!-- Top.Mail.Ru counter (отключён на localhost, чтобы тесты не слали события) -->
-    <script type="text/javascript">(function(){var h=location.hostname;if(h==='localhost'||h==='127.0.0.1'||h==='::1'||h.endsWith('.local'))return;
-    var _tmr = window._tmr || (window._tmr = []);
-    _tmr.push({id: "3781086", type: "pageView", start: (new Date()).getTime()});
-    (function (d, w, id) {
-      if (d.getElementById(id)) return;
-      var ts = d.createElement("script"); ts.type = "text/javascript"; ts.async = true; ts.id = id;
-      ts.src = "https://top-fwz1.mail.ru/js/code.js";
-      var f = function () {var s = d.getElementsByTagName("script")[0]; s.parentNode.insertBefore(ts, s);};
-      if (w.opera == "[object Opera]") { d.addEventListener("DOMContentLoaded", f, false); } else { f(); }
-    })(document, window, "tmr-code");})();</script>
-    <!-- /Top.Mail.Ru counter -->
-
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#E11D48" />
@@ -56,8 +14,8 @@
     />
     <meta name="keywords" content="персональная песня, песня на заказ, музыка, подарок, кастомный трек" />
     <meta name="author" content="Mezmo" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://mezmo.ru/" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="canonical" href="https://mezmo-song.com/" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
@@ -83,33 +41,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
 
-    <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin />
-
     <!-- Hero LCP poster — preloaded early so the largest paint is the image, not the video -->
     <link id="preload-hero" rel="preload" href="/images/hero-poster.jpg" as="image" fetchpriority="high" />
 
     <!-- Шрифты НЕ предзагружаем: контент кириллический (font-display: swap отрисует
          текст в системном фолбэке сразу), а preload отнимал полосу у hero-картинки (LCP). -->
 
-    <!-- Публичные настройки инлайнятся Go-сервером сюда (window.__SETTINGS__),
-         чтобы SPA отрисовал реальный шаблон сразу, не дожидаясь /api/public/settings (LCP).
-         В dev (Vite) плейсхолдер остаётся комментарием → фолбэк на API. -->
+    <!-- Снимок настроек лендинга (frontend/intl/settings.json) вшивается сюда при
+         сборке плагином inline-settings в vite.config.ts: бэкенда у сайта нет. -->
     <!--__SETTINGS__-->
   </head>
   <body>
-    <!-- Google Tag Manager (noscript) -->
-    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-N9THMZKK"
-    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-    <!-- End Google Tag Manager (noscript) -->
-
-    <!-- Top.Mail.Ru counter (noscript) -->
-    <noscript><div><img src="https://top-fwz1.mail.ru/counter?id=3781086;js=na" style="position:absolute;left:-9999px;" alt="Top.Mail.Ru" /></div></noscript>
-    <!-- /Top.Mail.Ru counter (noscript) -->
-
-    <!-- Яндекс.Метрика (noscript) -->
-    <noscript><div><img src="https://mc.yandex.ru/watch/110968609" style="position:absolute;left:-9999px;" alt="" /></div></noscript>
-    <!-- /Яндекс.Метрика (noscript) -->
-
     <div id="root"><div style="min-height:100vh;background:#FBF7F1;font-family:Inter,ui-sans-serif,system-ui,sans-serif">
       <p style="margin:0;text-align:center;font-size:12px;line-height:1.4;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#B5952F;padding:16px 16px 0">Подарок, который трогает душу</p>
       <div style="padding:16px 16px 0">

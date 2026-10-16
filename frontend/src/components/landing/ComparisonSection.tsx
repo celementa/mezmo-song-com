@@ -23,10 +23,10 @@ type Props = {
 }
 
 const defaultGiftItems: GiftItem[] = [
-  { icon: '🧴', name: 'Парфюм', price: 'от 10 000 ₽' },
-  { icon: '⌚', name: 'Часы', price: 'от 15 000 ₽' },
-  { icon: '👔', name: 'Одежда', price: 'от 5 000 ₽' },
-  { icon: '🎮', name: 'Гаджет', price: 'от 30 000 ₽' },
+  { icon: '🧴', name: 'Парфюм', price: 'от $120' },
+  { icon: '⌚', name: 'Часы', price: 'от $180' },
+  { icon: '👔', name: 'Одежда', price: 'от $60' },
+  { icon: '🎮', name: 'Гаджет', price: 'от $350' },
 ]
 
 const defaultChecklistItems: ChecklistItem[] = [

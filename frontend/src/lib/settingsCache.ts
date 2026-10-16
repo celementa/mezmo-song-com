@@ -17,16 +17,14 @@ export function cachedSettingsGet<T>(url: string): Promise<T> {
 
   // Use inlined settings when available. The server inlines the default theme's
   // settings, so we can also match ?theme=<defaultSlug> requests.
+  // mezmo-song.com — статика без бэкенда: снимок настроек вшит в index.html
+  // при сборке (frontend/intl/settings.json), и любой запрос настроек
+  // (с ?theme=, ?arm=) отвечается им же — /api на сервере нет.
   const inlined = (window as unknown as Loose).__SETTINGS__
   if (inlined) {
-    const bare = url === '/api/public/settings' || url === '/api/public/settings?'
-    const defaultSlug = inlined.defaultThemeSlug
-    const themedDefault = defaultSlug && url === `/api/public/settings?theme=${encodeURIComponent(defaultSlug)}`
-    if (bare || themedDefault) {
-      const promise = Promise.resolve(inlined as T)
-      _cache.set(url, { promise, ts: now })
-      return promise
-    }
+    const promise = Promise.resolve(inlined as T)
+    _cache.set(url, { promise, ts: now })
+    return promise
   }
 
   const promise = apiGet<T>(url).catch((err) => {

@@ -16,9 +16,10 @@ export type PersistedConfigDraft = {
 
 export function fmtCurrency(amt: number) {
   if (amt === 0) return 'Бесплатно'
-  return new Intl.NumberFormat('ru-RU', {
+  // mezmo-song.com продаёт в долларах: «$25».
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'RUB',
+    currency: 'USD',
     maximumFractionDigits: 0,
   }).format(amt)
 }
