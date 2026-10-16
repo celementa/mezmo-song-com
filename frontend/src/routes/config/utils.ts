@@ -1,6 +1,6 @@
 import type { OrderInput } from 'shared'
 
-import { CURRENCY, inCurrency } from '@/lib/currency'
+import { getCurrency, inCurrency, type Currency } from '@/lib/currency'
 
 export const CONFIG_DRAFT_STORAGE_KEY = 'laguin:config_draft:v1'
 
@@ -16,15 +16,15 @@ export type PersistedConfigDraft = {
   updatedAt: number
 }
 
-export function fmtCurrency(amt: number) {
+export function fmtCurrency(amt: number, currency: Currency = getCurrency()) {
   if (amt === 0) return 'Бесплатно'
   // Суммы приходят в долларах; в рублях — пересчёт по курсу (lib/currency.ts).
   // «$25» / «2 140 ₽».
-  return new Intl.NumberFormat(CURRENCY === 'RUB' ? 'ru-RU' : 'en-US', {
+  return new Intl.NumberFormat(currency === 'RUB' ? 'ru-RU' : 'en-US', {
     style: 'currency',
-    currency: CURRENCY,
+    currency,
     maximumFractionDigits: 0,
-  }).format(inCurrency(amt))
+  }).format(inCurrency(amt, currency))
 }
 
 /** Russian plural for days (1 день, 2 дня, 5 дней) */

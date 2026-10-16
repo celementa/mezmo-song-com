@@ -8,6 +8,7 @@ import type { Loose } from '@/lib/loose'
 import { COMPANY } from '@/lib/site'
 import { PaymentLogos } from '@/components/landing/PaymentLogos'
 import { CurrencySwitch } from '@/components/CurrencySwitch'
+import { useCurrency } from '@/lib/currency'
 import { EMPTY_ANSWERS, type FlowAnswers } from './types'
 import { loadFlowDraft, saveFlowDraft, searchWithStep, stepFromSearch } from './draft'
 import { EmailStep, EmotionStep, OccasionStep, RecipientStep, StoryStep, answersGenre } from './steps/BriefSteps'
@@ -166,6 +167,9 @@ function PaymentStep({
   answers: FlowAnswers
 }) {
   const { price, original } = inlinedPrice()
+  // Подписка на валюту: переключатель «$ / ₽» перерисовывает суммы шага сразу.
+  const currency = useCurrency()
+  const money = (usd: number) => fmtCurrency(usd, currency)
   const [agreed, setAgreed] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState(false)
@@ -188,7 +192,7 @@ function PaymentStep({
       eyebrow="Оплата"
       headline="Ваш заказ"
       subhead="Персональная песня по вашей истории: аудиофайл и текст, доступ навсегда."
-      primaryLabel={`Оплатить ${fmtCurrency(price)}`}
+      primaryLabel={`Оплатить ${money(price)}`}
       onPrimary={pay}
       primaryDisabled={!agreed}
     >
@@ -200,8 +204,8 @@ function PaymentStep({
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-sm text-[#6b6259]">К оплате</span>
           <span className="text-2xl font-bold text-[#151210]">
-            {fmtCurrency(price)}
-            {original && <span className="ml-2 text-sm font-normal text-[#b4a893] line-through">{fmtCurrency(original)}</span>}
+            {money(price)}
+            {original && <span className="ml-2 text-sm font-normal text-[#b4a893] line-through">{money(original)}</span>}
           </span>
         </div>
         <ul className="mt-3 space-y-1 text-xs text-[#6b6259]">

@@ -1,4 +1,4 @@
-import { CURRENCY, setCurrency, type Currency } from '@/lib/currency'
+import { setCurrency, useCurrency, type Currency } from '@/lib/currency'
 
 const OPTIONS: { value: Currency; label: string; title: string }[] = [
   { value: 'USD', label: '$', title: 'Цены в долларах США' },
@@ -7,6 +7,7 @@ const OPTIONS: { value: Currency; label: string; title: string }[] = [
 
 /** Переключатель валюты «$ / ₽» — как на международных сайтах. */
 export function CurrencySwitch({ className = '' }: { className?: string }) {
+  const currency = useCurrency()
   return (
     <div
       role="radiogroup"
@@ -14,7 +15,7 @@ export function CurrencySwitch({ className = '' }: { className?: string }) {
       className={`inline-flex rounded-full border border-[#d9cfbf] bg-white p-0.5 text-xs font-bold ${className}`}
     >
       {OPTIONS.map((o) => {
-        const active = o.value === CURRENCY
+        const active = o.value === currency
         return (
           <button
             key={o.value}

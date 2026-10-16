@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { Loose } from '@/lib/loose'
 import { cachedSettingsGet } from '@/lib/settingsCache'
@@ -7,7 +7,7 @@ import type { ActivityToastConfig } from '@/components/activity-toast/ActivityTo
 import type { TrackItem } from '@/components/landing/AudioSamplesSection'
 import { resolveSectionOrder, resolveSectionVisibility } from '@/lib/landingSections'
 import { fmtCurrency, ruDaysPhrase, ruHoursPhrase } from '@/routes/config/utils'
-import { CURRENCY, inCurrency } from '@/lib/currency'
+import { inCurrency, useCurrency, type Currency } from '@/lib/currency'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -501,10 +501,10 @@ function sanitizeHtml(html: string): string {
   return html.replace(/<\/?(?!strong|em|br\s*\/?)([a-z][a-z0-9]*)\b[^>]*>/gi, '')
 }
 
-function fmtCurrencyGlobal(amt: number | null | undefined) {
+function fmtCurrencyGlobal(amt: number | null | undefined, currency: Currency) {
   if (amt === 0) return 'Бесплатно'
-  if (amt === null || amt === undefined) return fmtCurrency(25)
-  return fmtCurrency(amt)
+  if (amt === null || amt === undefined) return fmtCurrency(25, currency)
+  return fmtCurrency(amt, currency)
 }
 
 function getInlinedConfig(): { cfg: PublicSiteConfig | null | undefined; design: string | null; instantEnabled: boolean | null; deliveryDelayHours: number | null; paymentAmount: number | null; originalAmount: number | null } {
@@ -589,7 +589,10 @@ export function useLandingData(): LandingData {
   const [paymentAmount, setPaymentAmount] = useState<number | null>(_inlined.paymentAmount)
   const [originalAmount, setOriginalAmount] = useState<number | null>(_inlined.originalAmount)
 
-  const fmtCurrency = fmtCurrencyGlobal
+  // Своя функция на каждую валюту: компоненты, получившие её пропсом, видят
+  // новую ссылку и перерисовывают цены при переключении «$ / ₽».
+  const currency = useCurrency()
+  const fmtCurrency = useCallback((amt: number | null | undefined) => fmtCurrencyGlobal(amt, currency), [currency])
 
   // Визиты не пишутся: у mezmo-song.com нет бэкенда (/api/public/track).
 
@@ -632,7 +635,7 @@ export function useLandingData(): LandingData {
       { q: 'А если результат не понравится?', a: 'Дорабатываем бесплатно, пока не станет ок. Если совсем не зайдёт — полный возврат без лишних вопросов. \ud83d\udc95' },
       { q: 'Правда бесплатно / со скидкой?', a: `Для первых клиентов — спецусловие (полная цена обычно ${fmtCurrency(originalAmount)}). Скрытых платежей нет.` },
     ]
-  }, [deliveryEta.label, instantEnabled, publicSiteConfig, originalAmount])
+  }, [deliveryEta.label, instantEnabled, publicSiteConfig, originalAmount, fmtCurrency])
 
   // --- Scroll listener for mobile CTA ---
   useEffect(() => {
@@ -663,8 +666,8 @@ export function useLandingData(): LandingData {
       provider: { '@id': `${origin}/#organization` },
       offers: {
         '@type': 'Offer',
-        price: String(inCurrency(paymentAmount ?? 25)),
-        priceCurrency: CURRENCY,
+        price: String(inCurrency(paymentAmount ?? 25, currency)),
+        priceCurrency: currency,
         availability: 'https://schema.org/InStock',
       },
     }
@@ -700,7 +703,7 @@ export function useLandingData(): LandingData {
       document.getElementById('ld-service')?.remove()
       document.getElementById('ld-faq')?.remove()
     }
-  }, [deliveryEta.sentenceLower, faqItems, publicSiteConfig, paymentAmount])
+  }, [deliveryEta.sentenceLower, faqItems, publicSiteConfig, paymentAmount, currency])
 
   // --- Fetch settings ---
   useEffect(() => {
