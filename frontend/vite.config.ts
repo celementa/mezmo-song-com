@@ -47,7 +47,6 @@ export default defineConfig({
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-ui': ['lucide-react', '@radix-ui/react-slot', 'class-variance-authority', 'clsx', 'tailwind-merge'],
-          'vendor-form': ['react-hook-form', '@hookform/resolvers', 'zod'],
         },
       },
     },
