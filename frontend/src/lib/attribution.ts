@@ -48,7 +48,8 @@ export function captureAttribution(): void {
     const isAdClick = Object.keys(found).length > 0
     if (!isAdClick && localStorage.getItem(KEY)) return
 
-    found.landingUrl = cut(window.location.pathname + window.location.search, 1000)
+    // Полный адрес с доменом: дашборд отдаёт его в выгрузке как есть (ТЗ п. 5).
+    found.landingUrl = cut(window.location.href, 1000)
     if (document.referrer) found.referrer = cut(document.referrer, 500)
     found.capturedAt = new Date().toISOString()
     localStorage.setItem(KEY, JSON.stringify(found))

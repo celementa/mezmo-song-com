@@ -17,9 +17,10 @@ export function cachedSettingsGet<T>(url: string): Promise<T> {
 
   // Use inlined settings when available. The server inlines the default theme's
   // settings, so we can also match ?theme=<defaultSlug> requests.
-  // mezmo-song.com — статика без бэкенда: снимок настроек вшит в index.html
-  // при сборке (frontend/intl/settings.json), и любой запрос настроек
-  // (с ?theme=, ?arm=) отвечается им же — /api на сервере нет.
+  // mezmo-song.com: тексты и дизайн лендинга — снимок, вшитый в index.html при
+  // сборке (frontend/intl/settings.json), и любой запрос настроек (с ?theme=,
+  // ?arm=) отвечается им же. Go-бэкенд .com свои настройки лендинга не отдаёт;
+  // цена плеча из ссылки берётся из /api/public/flow (useLandingData).
   const inlined = (window as unknown as Loose).__SETTINGS__
   if (inlined) {
     const promise = Promise.resolve(inlined as T)

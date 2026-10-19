@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#E11D48" />
 
+    <!-- Google Tag Manager (GTM-KL799LS7; GA4 G-X61MNEQ0GE и пиксели — тегами внутри
+         контейнера). Грузится по первому взаимодействию или через 3.5 с, чтобы не
+         отнимать полосу у LCP; на localhost не грузится вовсе. -->
+    <script>(function(){var h=location.hostname;if(h==='localhost'||h==='127.0.0.1'||h==='::1'||h.endsWith('.local'))return;
+    var w=window,d=document,l='dataLayer',i='GTM-KL799LS7';w[l]=w[l]||[];
+    var loaded=false,evts=['scroll','pointerdown','touchstart','keydown'],t;
+    function load(){if(loaded)return;loaded=true;clearTimeout(t);
+      evts.forEach(function(e){w.removeEventListener(e,load)});
+      w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});
+      var f=d.getElementsByTagName('script')[0],j=d.createElement('script');
+      j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i;f.parentNode.insertBefore(j,f);}
+    w.__gtmLoad=load; /* форс-загрузка для критичных событий (purchase) */
+    evts.forEach(function(e){w.addEventListener(e,load,{once:true,passive:true})});
+    t=setTimeout(load,3500);})();</script>
+    <!-- End Google Tag Manager -->
+
     <!-- Primary Meta Tags -->
     <title>Песня на заказ - подарок, который не забудут</title>
     <meta name="title" content="Песня на заказ - подарок, который не забудут" />
@@ -52,6 +68,10 @@
     <!--__SETTINGS__-->
   </head>
   <body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KL799LS7"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
     <div id="root"><div style="min-height:100vh;background:#FBF7F1;font-family:Inter,ui-sans-serif,system-ui,sans-serif">
       <p style="margin:0;text-align:center;font-size:12px;line-height:1.4;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#B5952F;padding:16px 16px 0">Подарок, который трогает душу</p>
       <div style="padding:16px 16px 0">

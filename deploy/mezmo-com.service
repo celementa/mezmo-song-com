@@ -1,0 +1,24 @@
+# Go-бэкенд mezmo-song.com: API заказов, оплата UnitPay, генерация, письма, админка.
+# Слушает PORT из .env (8080); порт закрыт ufw, снаружи — только через nginx.
+[Unit]
+Description=mezmo-song.com API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=mezmo-com
+Group=mezmo-com
+WorkingDirectory=/opt/mezmo-com
+EnvironmentFile=/opt/mezmo-com/.env
+ExecStart=/opt/mezmo-com/bin/server
+Restart=always
+RestartSec=3
+# Песни и БД пишутся только в data/; остальное файловой системы — только чтение.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/mezmo-com/data
+
+[Install]
+WantedBy=multi-user.target

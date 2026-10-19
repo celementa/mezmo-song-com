@@ -1,6 +1,7 @@
 name: Deploy mezmo-song.com
 
-# Пуш в main собирает статику, проверяет бандл и выкладывает её на сервер.
+# Пуш в main собирает статику и Go-бэкенд, проверяет их и выкладывает на сервер:
+# сначала бэкенд (фронт без его ручек сломал бы воронку), потом статику.
 # Ручной перезапуск — Actions → Deploy mezmo-song.com → Run workflow.
 on:
   push:
@@ -23,28 +24,72 @@ jobs:
           node-version: 22
           cache: npm
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Build
         run: |
           npm ci
           npm run build
+
+      - name: Test backend
+        run: go test ./internal/... ./cmd/...
+
+      # Статический бинарь: modernc/sqlite без CGo, на Ubuntu 20.04 с её glibc
+      # он запускается как есть.
+      - name: Build backend
+        run: |
+          mkdir -p release
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags "-s -w -X mezmo-song-com/internal/httpserver.BuildSHA=${GITHUB_SHA}" \
+            -o release/server ./cmd/server
+          cp -r data/prompts release/prompts
+          echo "${GITHUB_SHA}" > release/BUILD
 
       # Падает, если в бандл попала аналитика или домен .ru, пропал noindex,
       # canonical на .com, снимок настроек или запрет в robots.txt.
       - name: Check bundle
         run: npm run check
 
-      # Ключ на сервере привязан к rrsync: им можно только писать файлы в
-      # /var/www/mezmo-song.com от пользователя deploy-intl — ни шелла, ни root.
+      # Оба ключа на сервере привязаны к rrsync пользователя deploy-intl — ни
+      # шелла, ни root: DEPLOY_SSH_KEY пишет только в /var/www/mezmo-song.com,
+      # DEPLOY_API_SSH_KEY — только в /opt/mezmo-com/incoming.
       # Ключ хоста закреплён в секрете, а не берётся ssh-keyscan на лету.
-      - name: Upload to 109.248.42.189
+      - name: SSH keys
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          API_SSH_KEY: ${{ secrets.DEPLOY_API_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_deploy
+          echo "$API_SSH_KEY" > ~/.ssh/id_deploy_api
           echo "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/id_deploy_api
+
+      # Второй ключ того же пользователя привязан к rrsync /opt/mezmo-com/incoming.
+      # READY пишется последним: его появление запускает на сервере установку
+      # (deploy/mezmo-com-install.path) — бинарь не подменится недокачанным.
+      - name: Upload backend
+        run: |
+          ssh_opts="ssh -i ~/.ssh/id_deploy_api -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          rsync -rltz --delete --chmod=D755,F644 -e "$ssh_opts" release/ deploy-intl@109.248.42.189:/
+          touch release/READY
+          rsync -lt -e "$ssh_opts" release/READY deploy-intl@109.248.42.189:/READY
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 30); do
+            build=$(curl -fsS -D - -o /dev/null https://mezmo-song.com/health 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="x-build"{print $2}')
+            [ "$build" = "${GITHUB_SHA}" ] && { echo "бэкенд ${build} поднят"; exit 0; }
+            sleep 2
+          done
+          echo "бэкенд не поднялся с новой сборкой (X-Build=${build:-нет})" >&2
+          exit 1
+
+      - name: Upload static
+        run: |
           # --delay-updates/--delete-after: новые файлы подменяются в конце
           # пачкой, старые удаляются последними — без полусобранного сайта.
           rsync -rltz --delete-after --delay-updates --chmod=D755,F644 \
@@ -57,7 +102,8 @@ jobs:
           page=$(curl -fsS https://mezmo-song.com/)
           echo "$page" | grep -qF "$entry" || { echo "на сайте не новая сборка (ждали $entry)" >&2; exit 1; }
           curl -fsS -o /dev/null "https://mezmo-song.com$entry"
-          for p in /config /terms /privacy /security /consent /contacts; do
+          for p in /config /create /terms /privacy /security /consent /contacts; do
             curl -fsS -o /dev/null "https://mezmo-song.com$p" || { echo "не открывается $p" >&2; exit 1; }
           done
+          curl -fsS "https://mezmo-song.com/api/public/flow?sid=ci-smoke" | grep -q '"steps"' || { echo "не отвечает /api/public/flow" >&2; exit 1; }
           echo "mezmo-song.com отдаёт $entry"

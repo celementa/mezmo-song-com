@@ -5,10 +5,18 @@ import { LandingRoute } from '@/routes/LandingRoute'
 import { PublicRoot } from '@/features/analytics/PublicRoot'
 import { ThemeProvider } from '@/features/theme/ThemeContext'
 
-// mezmo-song.com — статика без бэкенда: лендинг, анкета заказа и юридические
-// страницы. Заказов, оплаты, кабинета и админки здесь нет — их маршруты из
-// ai-songs не переносились.
-const IntlFlowRoute = lazy(() => import('@/flow/IntlFlowRoute').then((m) => ({ default: m.IntlFlowRoute })))
+// mezmo-song.com: лендинг, две воронки заказа (/config — анкета, потом оплата;
+// /create — оплата в начале), страница заказа, юридические страницы и админка.
+// Подписочных страниц (/subscribe, /account) нет: подписку продавать нечем,
+// пока UnitPay не включил рекуррентные платежи.
+const FlowEntry = lazy(() => import('@/routes/FlowEntry').then((m) => ({ default: m.FlowEntry })))
+const CreateRoute = lazy(() => import('@/routes/create/CreateRoute').then((m) => ({ default: m.CreateRoute })))
+const OrderDeliveryRoute = lazy(() => import('@/routes/OrderDeliveryRoute').then((m) => ({ default: m.OrderDeliveryRoute })))
+const ThanksRoute = lazy(() => import('@/routes/ThanksRoute').then((m) => ({ default: m.ThanksRoute })))
+const AdminOrdersRoute = lazy(() => import('@/routes/AdminOrdersRoute').then((m) => ({ default: m.AdminOrdersRoute })))
+const AdminAnalyticsRoute = lazy(() => import('@/routes/AdminAnalyticsRoute').then((m) => ({ default: m.AdminAnalyticsRoute })))
+const AdminSettingsRoute = lazy(() => import('@/routes/AdminSettingsRoute').then((m) => ({ default: m.AdminSettingsRoute })))
+const AdminEmailsRoute = lazy(() => import('@/routes/AdminEmailsRoute').then((m) => ({ default: m.AdminEmailsRoute })))
 const LegalPage = lazy(() => import('@/routes/LegalPage').then((m) => ({ default: m.LegalPage })))
 const ContactPage = lazy(() => import('@/routes/ContactPage').then((m) => ({ default: m.ContactPage })))
 
@@ -59,11 +67,23 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<LazyFallback />}>
             <ThemeProvider themeSlug={null}>
-              <IntlFlowRoute />
+              <FlowEntry />
             </ThemeProvider>
           </Suspense>
         ),
       },
+      {
+        // Воронка «оплата в начале» (плечи variant4): FlowEntry уводит сюда по
+        // route плеча, ?v=2 закрепляется в localStorage.
+        path: '/create',
+        element: (
+          <Suspense fallback={<LazyFallback />}>
+            <CreateRoute />
+          </Suspense>
+        ),
+      },
+      { path: '/thanks', element: <Suspense fallback={<LazyFallback />}><ThanksRoute /></Suspense> },
+      { path: '/order/:orderId', element: <Suspense fallback={<LazyFallback />}><OrderDeliveryRoute /></Suspense> },
       { path: '/terms', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="terms" /></Suspense> },
       { path: '/privacy', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="privacy" /></Suspense> },
       { path: '/security', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="security" /></Suspense> },
@@ -71,4 +91,9 @@ export const router = createBrowserRouter([
       { path: '/contacts', element: <Suspense fallback={<LazyFallback />}><ContactPage /></Suspense> },
     ],
   },
+  // Страницы админки Go отдаёт только после входа (cmd/server/adminauth.go).
+  { path: '/admin/orders', element: <Suspense fallback={<LazyFallback />}><AdminOrdersRoute /></Suspense>, errorElement: <RouteErrorFallback /> },
+  { path: '/admin/analytics', element: <Suspense fallback={<LazyFallback />}><AdminAnalyticsRoute /></Suspense>, errorElement: <RouteErrorFallback /> },
+  { path: '/admin/settings', element: <Suspense fallback={<LazyFallback />}><AdminSettingsRoute /></Suspense>, errorElement: <RouteErrorFallback /> },
+  { path: '/admin/emails', element: <Suspense fallback={<LazyFallback />}><AdminEmailsRoute /></Suspense>, errorElement: <RouteErrorFallback /> },
 ])

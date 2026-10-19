@@ -1,0 +1,11 @@
+# CI кладёт новый релиз в /opt/mezmo-com/incoming (ключом с rrsync — без шелла)
+# и последним файлом пишет READY. Его появление запускает установку.
+[Unit]
+Description=Watch for a new mezmo-song.com API release
+
+[Path]
+PathChanged=/opt/mezmo-com/incoming/READY
+Unit=mezmo-com-install.service
+
+[Install]
+WantedBy=multi-user.target

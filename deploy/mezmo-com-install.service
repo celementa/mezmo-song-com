@@ -1,0 +1,6 @@
+[Unit]
+Description=Install mezmo-song.com API release from incoming/
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mezmo-com/install-release.sh

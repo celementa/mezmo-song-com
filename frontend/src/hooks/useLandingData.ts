@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { apiGet, apiPost } from '@/lib/http'
+import { getAttribution } from '@/lib/attribution'
+import { isLocalhost } from '@/lib/isLocalhost'
+import { getSessionId } from '@/lib/session'
 import type { Loose } from '@/lib/loose'
 import { cachedSettingsGet } from '@/lib/settingsCache'
 import { useThemeSlug } from '@/features/theme/ThemeContext'
@@ -594,7 +598,22 @@ export function useLandingData(): LandingData {
   const currency = useCurrency()
   const fmtCurrency = useCallback((amt: number | null | undefined) => fmtCurrencyGlobal(amt, currency), [currency])
 
-  // Визиты не пишутся: у mezmo-song.com нет бэкенда (/api/public/track).
+  // --- Tracking ---
+  useEffect(() => {
+    // Визит нужен дашборду: конверсия плеча считается от визита. Localhost не
+    // трекается, кроме Vite-дев-стенда (import.meta.env.DEV) с локальной БД.
+    if (isLocalhost() && !import.meta.env.DEV) return
+    try {
+      apiPost('/api/public/track', {
+        path: themeSlug ? `/${themeSlug}` : '/',
+        sessionId: getSessionId(),
+        themeSlug: themeSlug ?? null,
+        attribution: getAttribution(),
+      }).catch(() => {})
+    } catch {
+      // визит — телеметрия: её сбой не должен ломать рендер лендинга
+    }
+  }, [])
 
   // --- Delivery ETA ---
   const deliveryEta = useMemo<DeliveryEta>(() => {
@@ -744,6 +763,15 @@ export function useLandingData(): LandingData {
       .catch(() => {
         if (!cancelled) { setPublicSiteConfig(null); setDesign('classic') }
       })
+    // Тексты и дизайн лендинга — из вшитого снимка, а цена плеча из ссылки —
+    // с сервера: та же цена, что потом выставит воронка (/?arm=variant3-500-750s → $19).
+    if (armName) {
+      apiGet<{ price?: number }>(`/api/public/flow?sid=${encodeURIComponent(getSessionId())}&arm=${encodeURIComponent(armName)}`)
+        .then((cfg) => {
+          if (!cancelled && typeof cfg?.price === 'number') setPaymentAmount(cfg.price)
+        })
+        .catch(() => {})
+    }
     return () => { cancelled = true }
   }, [])
 
