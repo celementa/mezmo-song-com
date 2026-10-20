@@ -44,8 +44,8 @@ type emailVar struct {
 
 // commonEmailVars — подстановки, которые sendEmail добавляет в каждое письмо.
 var commonEmailVars = []emailVar{
-	{"site_url", "Адрес сайта: https://mezmo.ru"},
-	{"support_email", "Адрес поддержки: support@mezmo.ru"},
+	{"site_url", "Адрес сайта: https://mezmo-song.com"},
+	{"support_email", "Адрес поддержки: support@mezmo-song.com"},
 }
 
 const (

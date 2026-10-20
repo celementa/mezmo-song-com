@@ -322,7 +322,7 @@ func (s *Server) handleFlowV2Start(w http.ResponseWriter, r *http.Request) {
 	s.marketingEvent(o.ID, EventOrderCreated)
 	resumeURL := s.flowResumeURL(ref)
 	go s.sendFlowEmail(emailCreateStarted, o.ID, email, "Ваша персональная песня — начало положено",
-		"Здравствуйте!\n\nВы начали создание персональной песни на mezmo.ru.\n"+
+		"Здравствуйте!\n\nВы начали создание персональной песни на "+s.selfHost()+".\n"+
 			"Продолжить оформление можно в любой момент по ссылке:\n"+resumeURL+
 			"\n\nПесню пришлём на этот адрес, как только она будет готова.",
 		map[string]string{"resume_url": resumeURL})

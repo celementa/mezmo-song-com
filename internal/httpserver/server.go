@@ -2766,7 +2766,7 @@ func publicSiteConfigRU() map[string]any {
 	return map[string]any{
 		"logoUrl": "/logo.svg",
 		"footer": map[string]string{
-			"email":       "support@mezmo.ru",
+			"email":       "support@mezmo-song.com",
 			"companyName": "Mezmo",
 			"disclaimer":  "",
 		},
