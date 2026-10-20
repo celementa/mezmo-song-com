@@ -4,5 +4,6 @@ packages/shared/dist/
 .DS_Store
 .env.local
 .env
-/data/
+/data/*
+!/data/prompts/
 /bin/

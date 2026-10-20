@@ -125,7 +125,8 @@ func TestFlowV2_StartThenConfig(t *testing.T) {
 		t.Fatalf("config: code=%d body=%s", rec.Code, rec.Body.String())
 	}
 	o, _ = store.GetOrder(t.Context(), s.DB, id)
-	if !hasSongConfig(o) || o.Status != "processing" {
+	// Генерация идёт в фоне и с заглушками может успеть закончиться до чтения.
+	if !hasSongConfig(o) || (o.Status != "processing" && o.Status != "completed") {
 		t.Fatalf("after config: status=%s payload=%s", o.Status, o.InputPayloadJSON)
 	}
 
