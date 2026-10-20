@@ -14,9 +14,7 @@ package main
 //	admin    — ADMIN_USER / ADMIN_PASS, полный доступ к /admin* и /api/admin/*;
 //	ads      — ADS_USER / ADS_PASS, только страница воронки и ручка создания
 //	           заказа. Эти креды отдают модераторам рекламных площадок, поэтому
-//	           заказы и аналитика с данными клиентов им недоступны;
-//	lesroses — LESROSES_USER / LESROSES_PASS, кабинет партнёра Les Roses:
-//	           только его заказы-апсейлы (/admin/lesroses и его API).
+//	           заказы и аналитика с данными клиентов им недоступны.
 //
 // Basic Auth продолжает приниматься, если его прислали явно (curl, скрипты),
 // но браузер к нему сам уже не перейдёт.
@@ -40,11 +38,6 @@ import (
 const (
 	roleAdmin = "admin"
 	roleAds   = "ads"
-	// roleLesroses — кабинет партнёра: видит только заказы, проданные в его магазине.
-	roleLesroses = "lesroses"
-
-	lesrosesPagePath = "/admin/lesroses"
-	lesrosesAPIPath  = "/api/admin/lesroses/"
 
 	adsPagePath   = "/admin/ads"
 	adsDraftPath  = "/api/admin/orders/draft"
@@ -64,11 +57,6 @@ const (
 // admin-only, so leaked ad credentials can never reach customer data.
 func adsScoped(p string) bool {
 	return p == adsPagePath || p == adsDraftPath
-}
-
-// lesrosesScoped — страница кабинета Les Roses и её API.
-func lesrosesScoped(p string) bool {
-	return p == lesrosesPagePath || strings.HasPrefix(p, lesrosesAPIPath)
 }
 
 // sessionValue derives the cookie payload for a role from the secret that grants
@@ -97,8 +85,6 @@ func sessionRole(cfg config.Config, r *http.Request) string {
 	// Ссылка с токеном выдаёт ту же роль ads — отдельного механизма для неё нет.
 	case match(cfg.AdsAccessToken, roleAds):
 		return roleAds
-	case match(cfg.LesrosesPass, roleLesroses):
-		return roleLesroses
 	}
 	return ""
 }
@@ -119,8 +105,6 @@ func basicAuthRole(cfg config.Config, r *http.Request) string {
 		return roleAdmin
 	case match(cfg.AdsUser, cfg.AdsPass):
 		return roleAds
-	case match(cfg.LesrosesUser, cfg.LesrosesPass):
-		return roleLesroses
 	}
 	return ""
 }
@@ -132,8 +116,6 @@ func roleAllows(role, p string) bool {
 		return true
 	case roleAds:
 		return adsScoped(p)
-	case roleLesroses:
-		return lesrosesScoped(p)
 	}
 	return false
 }
@@ -166,11 +148,8 @@ func safeNext(raw, fallback string) string {
 }
 
 func homeFor(role string) string {
-	switch role {
-	case roleAds:
+	if role == roleAds {
 		return adsPagePath
-	case roleLesroses:
-		return lesrosesPagePath
 	}
 	return "/admin/orders"
 }
@@ -347,10 +326,6 @@ func handleLogin(cfg config.Config, limiter *loginLimiter, w http.ResponseWriter
 		limiter.reset(ip)
 		setSession(cfg, w, r, cfg.AdsPass, roleAds)
 		http.Redirect(w, r, safeNext(next, homeFor(roleAds)), http.StatusSeeOther)
-	case match(cfg.LesrosesUser, cfg.LesrosesPass):
-		limiter.reset(ip)
-		setSession(cfg, w, r, cfg.LesrosesPass, roleLesroses)
-		http.Redirect(w, r, safeNext(next, homeFor(roleLesroses)), http.StatusSeeOther)
 	default:
 		limiter.fail(ip)
 		renderLogin(w, http.StatusUnauthorized, next, "Неверный логин или пароль.")

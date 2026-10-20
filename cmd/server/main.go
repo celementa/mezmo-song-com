@@ -85,8 +85,6 @@ func main() {
 	srv.StartFlowJobs(context.Background())
 	// Сверка оплат с провайдером: подбирает платежи, уведомление о которых не дошло.
 	srv.StartPaymentReconciliation(context.Background())
-	// Les Roses: сверка заказов InSales и напоминания заполнить анкету.
-	srv.StartLesrosesJobs(context.Background())
 	// Публичный сайт отдаёт nginx из STATIC_DIR (туда же выкладывает CI фронта);
 	// сюда nginx проксирует только /api и /admin. Страницы админки Go отдаёт
 	// сам — после adminAuth, — из той же папки, поэтому отдельной сборки и

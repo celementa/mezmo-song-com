@@ -68,30 +68,10 @@ type ArmRow = {
   revenue: number
 }
 
-/** Воронка партнёра по плечам показа: показы и клики — люди, остальное — заказы. */
-type PartnerArmRow = {
-  arm: string
-  shown: number
-  added: number
-  declined: number
-  paid: number
-  briefed: number
-  ready: number
-  canceled: number
-  revenue: number
-}
-
-const PARTNER_ARM_LABEL: Record<string, string> = {
-  cart: 'LesRoses — cart',
-  popup: 'LesRoses — popup',
-  manual: 'LesRoses — вручную',
-}
-
 type Analytics = {
   days: number
   since: string
   arms?: ArmRow[]
-  partners?: { lesroses?: PartnerArmRow[] | null }
   purchases: Purchase[]
   daily: DailyRow[]
   subscriptions?: SubscriptionsBlock
@@ -300,59 +280,6 @@ export function AdminAnalyticsRoute() {
                 <tr>
                   <td colSpan={7} className="px-3 py-10 text-center text-gray-400">
                     Плечи за период не размечены — либо сплит не включён в настройках, либо визитов ещё нет
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <h2 className="mb-2 text-lg font-semibold text-gray-900">Партнёр Les Roses</h2>
-        <p className="mb-2 text-xs text-gray-500">
-          Песни, проданные в корзине lesrosesdechantal.ru и оплаченные там же. В источники и плечи выше не входят. Заказы
-          и сверка — в{' '}
-          <a href="/admin/lesroses" className="font-medium text-gray-700 underline">
-            кабинете Les Roses
-          </a>
-          .
-        </p>
-        <div className="mb-8 overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="px-3 py-3 font-medium">Вариант</th>
-                <th className="px-3 py-3 font-medium">Показы</th>
-                <th className="px-3 py-3 font-medium">Добавили</th>
-                <th className="px-3 py-3 font-medium" title="Закрыли попап: «Нет, спасибо», крестик или клик мимо окна">
-                  Закрыли
-                </th>
-                <th className="px-3 py-3 font-medium">Оплатили</th>
-                <th className="px-3 py-3 font-medium">Показ → оплата</th>
-                <th className="px-3 py-3 font-medium">Анкета</th>
-                <th className="px-3 py-3 font-medium">Готово</th>
-                <th className="px-3 py-3 font-medium">Сумма</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {(data?.partners?.lesroses ?? []).map((a) => (
-                <tr key={a.arm} className="hover:bg-gray-50">
-                  <td className="px-3 py-3 font-medium text-gray-800">{PARTNER_ARM_LABEL[a.arm] ?? a.arm}</td>
-                  <td className="px-3 py-3 text-gray-600">{a.shown || '—'}</td>
-                  <td className="px-3 py-3 text-gray-600">{a.added || '—'}</td>
-                  <td className="px-3 py-3 text-gray-600">{a.declined || '—'}</td>
-                  <td className="px-3 py-3 font-medium text-gray-900">{a.paid || '—'}</td>
-                  <td className="px-3 py-3 text-gray-600">{fmtCr(a.paid, a.shown)}</td>
-                  <td className="px-3 py-3 text-gray-600">{a.briefed || '—'}</td>
-                  <td className="px-3 py-3 text-gray-600">{a.ready || '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-3 text-gray-800">
-                    {a.revenue ? `$${a.revenue.toLocaleString('en-US')}` : '—'}
-                  </td>
-                </tr>
-              ))}
-              {!loading && (data?.partners?.lesroses ?? []).length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-3 py-10 text-center text-gray-400">
-                    За период ни показов, ни заказов
                   </td>
                 </tr>
               )}

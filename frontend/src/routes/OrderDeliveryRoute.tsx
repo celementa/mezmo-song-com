@@ -8,10 +8,8 @@ import {
 import type { Loose } from '@/lib/loose'
 import { runOrderPurchaseTracking } from '@/features/analytics/purchaseTracking'
 import { DeliveryHeldScreen, PostPaymentUpsell } from '@/flow/PostPaymentUpsell'
-import { PartnerBrief } from '@/routes/create/PartnerBrief'
 import { upsellAlreadySeen } from '@/flow/upsellSeen'
 import { fmtCurrency } from '@/routes/config/utils'
-import { COMPANY } from '@/lib/site'
 
 type DeliveryConfig = {
   pageTitle?: string
@@ -110,10 +108,6 @@ type OrderStatus = {
   upsellKind?: string | null
   subscribed?: boolean
   speedupPurchased?: boolean
-  /** Заказ оплачен у партнёра (Les Roses): апсейлов и отбивок покупки нет. */
-  partner?: string | null
-  /** Партнёрский заказ без анкеты — страница показывает вопросы о получателе. */
-  needsBrief?: boolean
 }
 
 type UnlockedOrder = {
@@ -810,8 +804,6 @@ export function OrderDeliveryRoute() {
     if (orderStatus.status !== 'created') return
     // Never auto-confirm orders that haven't been paid yet
     if (orderStatus.paymentStatus === 'pending') return
-    // Партнёрский заказ ждёт анкету: генерацию запустит её отправка (/config).
-    if (orderStatus.needsBrief) return
     if (hasAutoConfirmed.current) return
     hasAutoConfirmed.current = true
 
@@ -838,8 +830,6 @@ export function OrderDeliveryRoute() {
     if (orderStatus.status === 'created') return
     if (orderStatus.paymentStatus === 'pending') return
     if (orderStatus.purchaseTrackedAt) return
-    // Деньги партнёрского заказа прошли не через нас и не с нашей рекламы.
-    if (orderStatus.partner) return
     hasFiredPurchaseTracking.current = true
     void runOrderPurchaseTracking(orderStatus)
   }, [orderStatus])
@@ -948,26 +938,6 @@ export function OrderDeliveryRoute() {
     )
   }
 
-  // Песня куплена у партнёра (Les Roses), вопросов о получателе ещё не было —
-  // их задаёт эта страница: ссылка из письма ведёт сюда.
-  if (orderStatus?.needsBrief && orderId) {
-    return <PartnerBrief orderRef={orderId} onDone={() => void refreshOrders()} />
-  }
-
-  if (orderStatus?.partner && orderStatus.paymentStatus === 'refunded') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-50 to-white px-4">
-        <div className="text-center max-w-sm">
-          {renderLogo('lg')}
-          <h1 className="text-xl font-semibold text-gray-800">Заказ отменён</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Заказ в магазине отменён, поэтому песня по нему не создаётся. Если это ошибка, напишите нам на {COMPANY.email}.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   if (orderStatus?.paymentStatus === 'pending') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-50 to-white px-4 py-12">
@@ -1006,7 +976,6 @@ export function OrderDeliveryRoute() {
     Boolean(orderId) &&
     orderStatus?.paymentStatus === 'paid' &&
     Boolean(orderStatus?.flowVariant) &&
-    !orderStatus?.partner &&
     !orderStatus?.upsellKind &&
     !orderStatus?.subscribed &&
     !upsellDone &&

@@ -88,7 +88,6 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/webhooks/unisender-go", s.handleUnisenderGoWebhook)
 	mux.HandleFunc("POST /api/webhooks/unisender-go", s.handleUnisenderGoWebhook)
 	s.registerSubscription(mux)
-	s.registerLesroses(mux)
 }
 
 func (s *Server) handleOK(w http.ResponseWriter, r *http.Request) {
@@ -653,7 +652,7 @@ func (s *Server) handleOrderConfirm(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 402, map[string]string{"error": "not_paid"})
 		return
 	}
-	// Заказы воронки /create и партнёрские (Les Roses) оплачиваются ДО анкеты:
+	// Заказы воронки /create оплачиваются ДО анкеты:
 	// генерацию запускает /api/orders/{id}/config, а не этот вызов — иначе
 	// песня пишется по пустой анкете.
 	if o.Flow.Valid && !hasSongConfig(o) {
@@ -1124,11 +1123,7 @@ func (s *Server) handlePublicOrderStatus(w http.ResponseWriter, r *http.Request)
 		"upsellInvoiceUrl":         nil,
 		"themeSlug":                nullStr(o.ThemeSlug.String),
 		"flow":                     nullStr(o.Flow.String),
-		// Партнёрский заказ (Les Roses): оплачен у партнёра, апсейлов Mezmo и
-		// отбивок покупки на странице нет; needsBrief — пора показать анкету.
-		"partner":     nullStr(partnerOf(o)),
-		"needsBrief":  partnerOf(o) != "" && o.PaymentStatus == store.PaymentPaid && o.Status == "created" && !hasSongConfig(o),
-		"funnelStage": nullStr(o.FunnelStage.String),
+		"funnelStage":              nullStr(o.FunnelStage.String),
 		"extras": map[string]any{
 			"prices":   extraPrices,
 			"selected": store.ExtrasSelected(o),
@@ -2353,12 +2348,6 @@ func (s *Server) handleAdminAnalytics(w http.ResponseWriter, r *http.Request) {
 		if o.DiscountCode.String == "INTERNAL" || o.BasePrice == 0 {
 			continue
 		}
-		// Партнёрские продажи (Les Roses) — не наш трафик и не наши деньги
-		// через ЮKassa: у них своя воронка в блоке partners, здесь они
-		// исказили бы и источники, и плечи A/B.
-		if partnerOf(o) != "" {
-			continue
-		}
 
 		var attr map[string]any
 		if o.AttributionJSON.Valid {
@@ -2525,7 +2514,6 @@ func (s *Server) handleAdminAnalytics(w http.ResponseWriter, r *http.Request) {
 		"refunds":         totalRefunds,
 		"refundedRevenue": totalRefundedRevenue,
 		"subscriptions":   s.subscriptionAnalytics(r.Context(), selfHost),
-		"partners":        s.partnerAnalytics(r.Context(), sinceDay),
 	})
 }
 

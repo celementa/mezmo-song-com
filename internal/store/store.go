@@ -373,11 +373,7 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 
-	if err := migrateSubscriptions(db); err != nil {
-		return err
-	}
-
-	return migratePartner(db)
+	return migrateSubscriptions(db)
 }
 
 func CreateOrder(ctx context.Context, db *sql.DB, o Order) error {

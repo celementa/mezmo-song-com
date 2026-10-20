@@ -55,7 +55,7 @@ func (s *Server) marketingContact(email string, fields map[string]string) {
 
 // marketingOrder — то же по email покупателя заказа.
 func (s *Server) marketingOrder(orderID string, fields map[string]string) {
-	if !s.unisender().Enabled() || s.isPartnerOrder(orderID) {
+	if !s.unisender().Enabled() {
 		return
 	}
 	s.marketingContact(extractCustomerEmail(orderID, s.DB), fields)
@@ -83,10 +83,6 @@ func (s *Server) marketingEvent(orderID, eventType string) {
 	o, err := store.GetOrder(context.Background(), s.DB, orderID)
 	if err != nil {
 		log.Printf("[marketing] event=%s order=%s get order err=%v", eventType, orderID, err)
-		return
-	}
-	// Покупатель партнёра (Les Roses) нам на рассылки не подписывался.
-	if partnerOf(o) != "" {
 		return
 	}
 	email := strings.ToLower(extractCustomerEmail(orderID, s.DB))

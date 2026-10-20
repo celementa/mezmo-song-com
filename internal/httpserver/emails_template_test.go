@@ -177,7 +177,7 @@ func TestEmailKindsVarsValid(t *testing.T) {
 	}
 }
 
-// Каждое письмо подписки и Les Roses передаёт все подстановки, объявленные в
+// Каждое письмо подписки передаёт все подстановки, объявленные в
 // реестре: иначе в свёрстанном шаблоне останется пустое место.
 func TestEmailVarsMatchRegistry(t *testing.T) {
 	s, db := goServer(t)
@@ -193,15 +193,13 @@ func TestEmailVarsMatchRegistry(t *testing.T) {
 		NextChargeAt: sql.NullString{String: time.Now().Format(time.RFC3339), Valid: true},
 		AccessUntil:  sql.NullString{String: time.Now().Format(time.RFC3339), Valid: true}}
 	senders := map[string]func(){
-		emailSubWelcome:       func() { s.sendSubscriptionWelcomeEmail(sub) },
-		emailSubGift:          func() { _ = s.sendSubscriptionGiftEmail(sub) },
-		emailSubReminder:      func() { _ = s.sendSubscriptionReminderEmail(sub) },
-		emailSubCharged:       func() { s.sendSubscriptionChargedEmail(sub) },
-		emailSubChargeFailed:  func() { s.sendSubscriptionChargeFailedEmail(sub) },
-		emailSubExpired:       func() { s.sendSubscriptionExpiredEmail(sub) },
-		emailSubCancelLink:    func() { s.sendSubscriptionCancelLinkEmail(sub) },
-		emailLesrosesLink:     func() { s.sendLesrosesEmail(ctx, emailLesrosesLink, "ord_1", "a@x.ru", "4565") },
-		emailLesrosesReminder: func() { s.sendLesrosesEmail(ctx, emailLesrosesReminder, "ord_1", "a@x.ru", "4565") },
+		emailSubWelcome:      func() { s.sendSubscriptionWelcomeEmail(sub) },
+		emailSubGift:         func() { _ = s.sendSubscriptionGiftEmail(sub) },
+		emailSubReminder:     func() { _ = s.sendSubscriptionReminderEmail(sub) },
+		emailSubCharged:      func() { s.sendSubscriptionChargedEmail(sub) },
+		emailSubChargeFailed: func() { s.sendSubscriptionChargeFailedEmail(sub) },
+		emailSubExpired:      func() { s.sendSubscriptionExpiredEmail(sub) },
+		emailSubCancelLink:   func() { s.sendSubscriptionCancelLinkEmail(sub) },
 	}
 	for kind, send := range senders {
 		*calls = nil
