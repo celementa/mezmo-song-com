@@ -47,6 +47,10 @@ type Config struct {
 	// UnitPay — приём оплаты mezmo-song.com (internal/payment/unitpay.go).
 	UnitPayProjectID string
 	UnitPaySecretKey string
+	// UnitPayNotifySecretKey — ключ подписи HTTP-уведомлений. UnitPay подписывает их
+	// боевым ключом проекта даже в тестовом режиме, когда API ходит с тестовым.
+	// Пусто — тот же UnitPaySecretKey (на бою ключ один).
+	UnitPayNotifySecretKey string
 	// UnitPayTest — тестовый режим API: только RUB, поэтому сумма в валюте сайта
 	// пересчитывается по UnitPayTestRubRate (тот же курс, что RUB_PER_USD на фронте).
 	UnitPayTest        bool
@@ -104,7 +108,7 @@ type Config struct {
 }
 
 func Load() Config {
-	return Config{
+	c := Config{
 		Port:                getenv("PORT", "8080"),
 		DatabasePath:        getenv("DATABASE_PATH", "./data/ai-songs.db"),
 		LogDir:              getenv("LOG_DIR", filepath.Join(filepath.Dir(getenv("DATABASE_PATH", "./data/ai-songs.db")), "logs")),
@@ -160,6 +164,8 @@ func Load() Config {
 		VKPixelID:           os.Getenv("VK_PIXEL_ID"),
 		VKGoal:              getenv("VK_GOAL", "purchase"),
 	}
+	c.UnitPayNotifySecretKey = os.Getenv("UNITPAY_NOTIFY_SECRET_KEY")
+	return c
 }
 
 // splitCSV parses a comma-separated env value into a trimmed, non-empty slice.

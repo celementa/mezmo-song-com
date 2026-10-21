@@ -189,7 +189,11 @@ func (s *Server) handleUnitPayWebhook(w http.ResponseWriter, r *http.Request) {
 		reply("Forbidden")
 		return
 	}
-	if !payment.UnitPayVerify(method, params, s.Config.UnitPaySecretKey) {
+	notifyKey := s.Config.UnitPayNotifySecretKey
+	if notifyKey == "" {
+		notifyKey = s.Config.UnitPaySecretKey
+	}
+	if !payment.UnitPayVerify(method, params, notifyKey) {
 		log.Printf("[pay] unitpay webhook REJECTED: неверная подпись (method=%s order=%s)", method, orderID)
 		reply("Неверная подпись запроса")
 		return

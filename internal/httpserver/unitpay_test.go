@@ -165,3 +165,20 @@ func TestUnitPayTestModeSettlesInRubles(t *testing.T) {
 		t.Fatalf("status = %s, want paid", got)
 	}
 }
+
+// UnitPay подписывает уведомления боевым ключом проекта и в тестовом режиме,
+// когда API ходит с тестовым: при заданном ключе уведомлений проверка идёт им.
+func TestUnitPayVerifiesWithNotifyKey(t *testing.T) {
+	s, id := newUnitPayTestServer(t, config.Config{})
+	s.Config.UnitPaySecretKey = "sk_test_api"
+	s.Config.UnitPayNotifySecretKey = testUnitPaySecret
+	if out := unitpayNotify(t, s, "check", payment.UnitPayIPs[0], payParams(id, "25.00", "USD"), true); out["result"] == nil {
+		t.Fatalf("уведомление с подписью ключом уведомлений отклонено: %v", out)
+	}
+
+	s.Config.UnitPaySecretKey = testUnitPaySecret
+	s.Config.UnitPayNotifySecretKey = "other"
+	if out := unitpayNotify(t, s, "check", payment.UnitPayIPs[0], payParams(id, "25.00", "USD"), true); out["error"] == nil {
+		t.Fatalf("при заданном ключе уведомлений принята подпись ключом API: %v", out)
+	}
+}
