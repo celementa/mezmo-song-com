@@ -14,6 +14,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -104,7 +105,7 @@ func (s *Server) initiateUnitPay(w http.ResponseWriter, r *http.Request, o store
 			time.Since(c.IssuedAt) < confirmationTTL && p.Status == payment.UnitPayStatusWait &&
 			unitpayAmountMatches(p.OrderSum, p.OrderCurrency, sum, currency) {
 			log.Printf("[pay] unitpay initiate order=%s payment=%s reused (age=%s)", o.ID, pid, time.Since(c.IssuedAt).Round(time.Second))
-			writeJSON(w, 200, map[string]any{"confirmationUrl": c.URL})
+			writeJSON(w, 200, unitpayStartResponse(c.URL, returnURL))
 			return
 		}
 	}
@@ -142,7 +143,24 @@ func (s *Server) initiateUnitPay(w http.ResponseWriter, r *http.Request, o store
 		log.Printf("[pay] unitpay initiate order=%s save confirmation err=%v", o.ID, err)
 	}
 	log.Printf("[pay] unitpay initiate order=%s payment=%s amount=%s %s test=%v created", o.ID, res.PaymentID, sum, currency, s.Config.UnitPayTest)
-	writeJSON(w, 200, map[string]any{"confirmationUrl": res.RedirectURL})
+	writeJSON(w, 200, unitpayStartResponse(res.RedirectURL, returnURL))
+}
+
+// unitpayWidgetHost — хост платёжного виджета UnitPay: та же форма с теми же
+// подписанными параметрами, но для открытия во iframe поверх нашего сайта.
+const unitpayWidgetHost = "widget.unitpay.money"
+
+// unitpayStartResponse — ответ initiate-payment: адрес формы (запасной путь —
+// переход на unitpay.money), адрес той же формы в виджете и куда вести
+// покупателя после успешной оплаты в виджете (resultUrl UnitPay там не срабатывает).
+func unitpayStartResponse(formURL, returnURL string) map[string]any {
+	out := map[string]any{"confirmationUrl": formURL}
+	if u, err := url.Parse(formURL); err == nil && u.Host == "unitpay.money" {
+		u.Host = unitpayWidgetHost
+		out["widgetUrl"] = u.String()
+		out["returnUrl"] = returnURL
+	}
+	return out
 }
 
 func publicIPOrEmpty(ip string) string {

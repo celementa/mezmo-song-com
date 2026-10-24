@@ -182,3 +182,18 @@ func TestUnitPayVerifiesWithNotifyKey(t *testing.T) {
 		t.Fatalf("при заданном ключе уведомлений принята подпись ключом API: %v", out)
 	}
 }
+
+// Виджет — та же форма с теми же параметрами на хосте виджета; чужой адрес
+// формы виджетом не открывается, остаётся только переход.
+func TestUnitPayStartResponseWidget(t *testing.T) {
+	out := unitpayStartResponse("https://unitpay.money/pay/445942-07a7f/card?account=ord_up&signature=abc&test=1", "https://mezmo-song.com/order/r1")
+	if got := out["widgetUrl"]; got != "https://widget.unitpay.money/pay/445942-07a7f/card?account=ord_up&signature=abc&test=1" {
+		t.Fatalf("widgetUrl = %v", got)
+	}
+	if out["returnUrl"] != "https://mezmo-song.com/order/r1" {
+		t.Fatalf("returnUrl = %v", out["returnUrl"])
+	}
+	if out := unitpayStartResponse("https://example.com/pay", "x"); out["widgetUrl"] != nil {
+		t.Fatalf("виджет для чужого адреса: %v", out)
+	}
+}

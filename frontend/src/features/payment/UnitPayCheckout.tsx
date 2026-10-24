@@ -3,11 +3,13 @@
  * (требование банка) и переход на платёжную форму UnitPay.
  *
  * Сервер заводит платёж (initPayment) только по кнопке, а не при показе шага:
- * без принятой оферты платить нельзя. Ответ — confirmationUrl формы UnitPay;
- * после оплаты UnitPay возвращает покупателя на resultUrl, который задал сервер.
+ * без принятой оферты платить нельзя. Ответ — widgetUrl: та же форма UnitPay
+ * открывается окном поверх сайта (UnitPayWidget), после оплаты покупатель
+ * уходит на returnUrl. Нет widgetUrl — переход на форму по confirmationUrl,
+ * откуда UnitPay возвращает на resultUrl, который задал сервер.
  */
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ShieldCheck } from 'lucide-react'
 
@@ -22,6 +24,9 @@ export type PaymentMode = 'embedded' | 'redirect'
 /** Ответ любой ручки, заводящей платёж (initiate-payment и т. п.). */
 export type PaymentStart = {
   confirmationUrl?: string
+  /** Форма UnitPay для открытия во iframe и куда вести после оплаты в нём. */
+  widgetUrl?: string
+  returnUrl?: string
   /** Оплата не нужна: цена 0 или mock-режим стенда. */
   paid?: boolean
   activated?: boolean
@@ -55,6 +60,7 @@ export function UnitPayCheckout({
   const [agreed, setAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [widget, setWidget] = useState<{ url: string; returnUrl: string } | null>(null)
 
   const pay = async () => {
     if (!agreed) {
@@ -65,6 +71,10 @@ export function UnitPayCheckout({
     setBusy(true)
     try {
       const res = await start('redirect')
+      if (res.widgetUrl && res.returnUrl) {
+        setWidget({ url: res.widgetUrl, returnUrl: res.returnUrl })
+        return
+      }
       if (res.confirmationUrl) {
         window.location.assign(res.confirmationUrl)
         return
@@ -95,7 +105,7 @@ export function UnitPayCheckout({
       eyebrow="Оплата"
       headline="Ваш заказ"
       subhead="Персональная песня по вашей истории: аудиофайл и текст, доступ навсегда."
-      primaryLabel={busy ? 'Переходим к оплате…' : `Оплатить ${money(amount)}`}
+      primaryLabel={busy ? 'Открываем оплату…' : `Оплатить ${money(amount)}`}
       onPrimary={() => void pay()}
       primaryDisabled={!agreed || busy}
     >
@@ -136,7 +146,7 @@ export function UnitPayCheckout({
       </label>
 
       <p className="mt-4 text-xs text-[#6b6259]">
-        Оплата проходит на защищённой странице UnitPay — после неё вы вернётесь на сайт.
+        Оплата проходит в защищённом окне UnitPay прямо на сайте.
       </p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
         <p className="inline-flex items-center gap-1.5 text-xs text-[#9c9186]">
@@ -144,6 +154,53 @@ export function UnitPayCheckout({
         </p>
         <PaymentLogos />
       </div>
+      {widget ? (
+        <UnitPayWidget
+          url={widget.url}
+          onSuccess={() => window.location.assign(widget.returnUrl)}
+          onClose={() => {
+            setWidget(null)
+            setBusy(false)
+          }}
+        />
+      ) : null}
     </StepShell>
+  )
+}
+
+const WIDGET_ORIGIN = 'https://widget.unitpay.money'
+
+/**
+ * Платёжный виджет UnitPay: их форма во iframe на весь экран. Делает то же,
+ * что их widget.js, но без него: тот вешает глобальный window.onmessage и не
+ * проверяет, от кого пришло сообщение. Форма шлёт родителю JSON-строки
+ * {action: 'success' | 'close' | ...}. Оплату засчитывает только уведомление
+ * UnitPay серверу — 'success' лишь уводит на страницу заказа, которая ждёт его.
+ */
+function UnitPayWidget({ url, onSuccess, onClose }: { url: string; onSuccess: () => void; onClose: () => void }) {
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== WIDGET_ORIGIN || typeof e.data !== 'string') return
+      let action: unknown
+      try {
+        action = (JSON.parse(e.data) as { action?: unknown }).action
+      } catch {
+        return
+      }
+      if (action === 'success') onSuccess()
+      if (action === 'close') onClose()
+    }
+    window.addEventListener('message', onMessage)
+    document.body.classList.add('overflow-hidden')
+    return () => {
+      window.removeEventListener('message', onMessage)
+      document.body.classList.remove('overflow-hidden')
+    }
+  }, [onSuccess, onClose])
+
+  return (
+    <div className="fixed inset-0 z-[99999] bg-black/60">
+      <iframe src={url} title="Оплата UnitPay" allow="payment" className="h-full w-full border-0 bg-transparent" />
+    </div>
   )
 }
