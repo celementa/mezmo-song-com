@@ -105,7 +105,7 @@ func (s *Server) initiateUnitPay(w http.ResponseWriter, r *http.Request, o store
 			time.Since(c.IssuedAt) < confirmationTTL && p.Status == payment.UnitPayStatusWait &&
 			unitpayAmountMatches(p.OrderSum, p.OrderCurrency, sum, currency) {
 			log.Printf("[pay] unitpay initiate order=%s payment=%s reused (age=%s)", o.ID, pid, time.Since(c.IssuedAt).Round(time.Second))
-			writeJSON(w, 200, unitpayStartResponse(c.URL, returnURL))
+			writeJSON(w, 200, unitpayStartResponse(c.URL, returnURL, !s.Config.UnitPayTest))
 			return
 		}
 	}
@@ -143,7 +143,7 @@ func (s *Server) initiateUnitPay(w http.ResponseWriter, r *http.Request, o store
 		log.Printf("[pay] unitpay initiate order=%s save confirmation err=%v", o.ID, err)
 	}
 	log.Printf("[pay] unitpay initiate order=%s payment=%s amount=%s %s test=%v created", o.ID, res.PaymentID, sum, currency, s.Config.UnitPayTest)
-	writeJSON(w, 200, unitpayStartResponse(res.RedirectURL, returnURL))
+	writeJSON(w, 200, unitpayStartResponse(res.RedirectURL, returnURL, !s.Config.UnitPayTest))
 }
 
 // unitpayWidgetHost — хост платёжного виджета UnitPay: та же форма с теми же
@@ -153,9 +153,10 @@ const unitpayWidgetHost = "widget.unitpay.money"
 // unitpayStartResponse — ответ initiate-payment: адрес формы (запасной путь —
 // переход на unitpay.money), адрес той же формы в виджете и куда вести
 // покупателя после успешной оплаты в виджете (resultUrl UnitPay там не срабатывает).
-func unitpayStartResponse(formURL, returnURL string) map[string]any {
+// В тестовом режиме виджет отдаёт 404 на шаге 3-D Secure — там только переход на форму.
+func unitpayStartResponse(formURL, returnURL string, widget bool) map[string]any {
 	out := map[string]any{"confirmationUrl": formURL}
-	if u, err := url.Parse(formURL); err == nil && u.Host == "unitpay.money" {
+	if u, err := url.Parse(formURL); widget && err == nil && u.Host == "unitpay.money" {
 		u.Host = unitpayWidgetHost
 		out["widgetUrl"] = u.String()
 		out["returnUrl"] = returnURL
