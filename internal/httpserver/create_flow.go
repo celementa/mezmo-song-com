@@ -188,6 +188,7 @@ func (s *Server) handleFlowV1Draft(w http.ResponseWriter, r *http.Request) {
 	freeGeneration, quotaReason := s.claimFreeGeneration(ctx, visitor, clientIP(r))
 
 	o := buildOrderFromBody(s.Config, body)
+	o.Language = requestLang(r)
 	o.Flow = sql.NullString{String: "v1", Valid: true}
 	o.FunnelStage = sql.NullString{String: store.StageStarted, Valid: true}
 	// Плечо A/B-теста считается сервером от сессии, как в /api/orders/draft.
@@ -286,6 +287,7 @@ func (s *Server) handleFlowV2Start(w http.ResponseWriter, r *http.Request) {
 		Flow:             sql.NullString{String: "v2", Valid: true},
 		FunnelStage:      sql.NullString{String: store.StageEmailCaptured, Valid: true},
 		EmailConsent:     true,
+		Language:         requestLang(r),
 		CreatedAt:        time.Now(),
 	}
 	if s.paymentsConfigured() {
@@ -320,11 +322,18 @@ func (s *Server) handleFlowV2Start(w http.ResponseWriter, r *http.Request) {
 	ref := publicOrderRef(s.Config.WebhookSecret, o.ID)
 	s.marketingContact(email, nil)
 	s.marketingEvent(o.ID, EventOrderCreated)
-	resumeURL := s.flowResumeURL(ref)
-	go s.sendFlowEmail(emailCreateStarted, o.ID, email, "Ваша персональная песня — начало положено",
+	resumeURL := s.flowResumeURL(o.Lang(), ref)
+	subject, text := "Ваша персональная песня — начало положено",
 		"Здравствуйте!\n\nВы начали создание персональной песни на "+s.selfHost()+".\n"+
 			"Продолжить оформление можно в любой момент по ссылке:\n"+resumeURL+
-			"\n\nПесню пришлём на этот адрес, как только она будет готова.",
+			"\n\nПесню пришлём на этот адрес, как только она будет готова."
+	if o.Lang() == store.LangEN {
+		subject, text = "Your personal song — off to a great start",
+			"Hello!\n\nYou have started creating a personal song on "+s.selfHost()+".\n"+
+				"You can continue your order at any time here:\n"+resumeURL+
+				"\n\nWe will send the song to this address as soon as it is ready."
+	}
+	go s.sendFlowEmail(emailCreateStarted, o.ID, email, subject, text,
 		map[string]string{"resume_url": resumeURL})
 
 	log.Printf("[flow] v2 start order=%s email=%s", o.ID, email)
@@ -375,11 +384,17 @@ func (s *Server) handleOrderSetEmail(w http.ResponseWriter, r *http.Request) {
 	s.marketingEvent(id, EventOrderCreated)
 	if o.PreviewStartedAt.Valid {
 		ref := publicOrderRef(s.Config.WebhookSecret, id)
-		songURL := s.flowResumeURL(ref)
-		shareURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/listen/" + ref
-		go s.sendFlowEmail(emailCreatePreview, id, email, "Ваша песня — слушайте по ссылке",
+		songURL := s.flowResumeURL(o.Lang(), ref)
+		shareURL := s.siteURL(o.Lang()) + "/listen/" + ref
+		subject, body := "Ваша песня — слушайте по ссылке",
 			"Здравствуйте!\n\nВаша персональная песня создана и ждёт вас:\n"+songURL+
-				"\n\nПоделиться отрывком:\n"+shareURL,
+				"\n\nПоделиться отрывком:\n"+shareURL
+		if o.Lang() == store.LangEN {
+			subject, body = "Your song is ready to listen",
+				"Hello!\n\nYour personal song has been created and is waiting for you:\n"+songURL+
+					"\n\nShare a snippet:\n"+shareURL
+		}
+		go s.sendFlowEmail(emailCreatePreview, id, email, subject, body,
 			map[string]string{"song_url": songURL, "share_url": shareURL})
 	}
 
@@ -560,7 +575,7 @@ func (s *Server) handleExtraInitiate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ref := publicOrderRef(s.Config.WebhookSecret, id)
-	returnURL := s.flowResumeURL(ref) + "&extra=" + body.ID
+	returnURL := s.flowResumeURL(o.Lang(), ref) + "&extra=" + body.ID
 	var cust map[string]any
 	_ = json.Unmarshal([]byte(o.CustomerJSON), &cust)
 	custEmail, _ := cust["email"].(string)
@@ -679,8 +694,8 @@ func (s *Server) applyExtraEffect(ctx context.Context, orderID, extraID string) 
 // --- письма и джоба-догонка ---
 
 // flowResumeURL — ссылка возврата в воронку /create с восстановлением заказа.
-func (s *Server) flowResumeURL(ref string) string {
-	return strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/create?order=" + ref
+func (s *Server) flowResumeURL(lang, ref string) string {
+	return s.siteURL(lang) + "/create?order=" + ref
 }
 
 // sendFlowEmail шлёт письмо-триггер воронки; отсутствие SMTP не ошибка (dev).

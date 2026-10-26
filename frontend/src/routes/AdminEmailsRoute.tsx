@@ -19,6 +19,7 @@ type EmailKind = {
   enabled: boolean
   // Шаблон Unisender Go: пусто — письмо уходит нашим текстом.
   templateId: string
+  templateIdEn: string
   vars: EmailVar[]
 }
 
@@ -104,33 +105,34 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
 const TEMPLATE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
- * Шаблон Unisender Go для письма: id из конструктора и подстановки, которые
- * сервер в него передаёт. Тема и текст при заданном шаблоне берутся из него.
+ * Поле id шаблона Unisender Go одного языка: ввод, «Сохранить», «Убрать».
  */
-function TemplateEditor({
-  kind,
-  commonVars,
+function TemplateIdField({
+  inputId,
+  label,
+  current,
   saving,
   onSave,
 }: {
-  kind: EmailKind
-  commonVars: EmailVar[]
+  inputId: string
+  label: string
+  current: string
   saving: boolean
   onSave: (templateId: string) => void
 }) {
-  const [value, setValue] = useState(kind.templateId)
+  const [value, setValue] = useState(current)
   const trimmed = value.trim()
   const invalid = trimmed !== '' && !TEMPLATE_ID_RE.test(trimmed)
-  const changed = trimmed.toLowerCase() !== kind.templateId
+  const changed = trimmed.toLowerCase() !== current
 
   return (
-    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-4">
-      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500" htmlFor={`tpl-${kind.key}`}>
-        ID шаблона Unisender Go
+    <div className="mb-3">
+      <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500" htmlFor={inputId}>
+        {label}
       </label>
       <div className="mt-1.5 flex flex-wrap gap-2">
         <input
-          id={`tpl-${kind.key}`}
+          id={inputId}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="пусто — уходит наш текст"
@@ -147,7 +149,7 @@ function TemplateEditor({
         >
           Сохранить
         </button>
-        {kind.templateId && (
+        {current && (
           <button
             type="button"
             disabled={saving}
@@ -162,9 +164,48 @@ function TemplateEditor({
         )}
       </div>
       {invalid && <p className="mt-1 text-xs text-red-600">Это не id шаблона: нужен UUID вида 0f4a6b2c-1d3e-…</p>}
+    </div>
+  )
+}
+
+/**
+ * Шаблоны Unisender Go для письма: id из конструктора (отдельно для заказов с
+ * русской и английской версии сайта) и подстановки, которые сервер в них
+ * передаёт. Тема и текст при заданном шаблоне берутся из него.
+ */
+function TemplateEditor({
+  kind,
+  commonVars,
+  saving,
+  onSave,
+}: {
+  kind: EmailKind
+  commonVars: EmailVar[]
+  saving: boolean
+  onSave: (patch: { templateId: string } | { templateIdEn: string }) => void
+}) {
+  return (
+    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-4">
+      <TemplateIdField
+        key={`ru-${kind.templateId}`}
+        inputId={`tpl-${kind.key}`}
+        label="ID шаблона Unisender Go — русская версия"
+        current={kind.templateId}
+        saving={saving}
+        onSave={(templateId) => onSave({ templateId })}
+      />
+      <TemplateIdField
+        key={`en-${kind.templateIdEn}`}
+        inputId={`tpl-en-${kind.key}`}
+        label="ID шаблона — английская версия (заказы с /en)"
+        current={kind.templateIdEn}
+        saving={saving}
+        onSave={(templateIdEn) => onSave({ templateIdEn })}
+      />
       <p className="mt-2 text-xs text-gray-500">
         С шаблоном тема и текст берутся из конструктора Unisender. Если шаблон не отправится (удалён, ошибка в id), письмо
-        уйдёт нашим текстом, а причина появится в журнале.
+        уйдёт нашим текстом, а причина появится в журнале. Английскому заказу без английского шаблона уходит наш
+        английский текст — русский шаблон ему не отправляется.
       </p>
       <p className="mt-2 text-xs text-amber-700">
         Шаблонизатор — simple. Не вставляйте подстановку внутрь условия ({'{{intro?…{{intro}}…}}'}): Unisender в этом случае
@@ -229,7 +270,7 @@ export function AdminEmailsRoute() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Ошибка загрузки журнала'))
   }, [page, search])
 
-  const save = (patch: { key: string; enabled?: boolean; templateId?: string }) => {
+  const save = (patch: { key: string; enabled?: boolean; templateId?: string; templateIdEn?: string }) => {
     setSaving(true)
     setError(null)
     fetch('/api/admin/emails', {
@@ -300,7 +341,9 @@ export function AdminEmailsRoute() {
                           aria-expanded={openKey === k.key}
                           className="mt-1 inline-flex items-center gap-1 text-sm text-rose-600 hover:underline"
                         >
-                          {k.templateId ? 'Шаблон Unisender подключён' : 'Шаблон Unisender'}
+                          {k.templateId || k.templateIdEn
+                            ? `Шаблон Unisender: ${[k.templateId && 'RU', k.templateIdEn && 'EN'].filter(Boolean).join(' + ')}`
+                            : 'Шаблон Unisender'}
                           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openKey === k.key ? 'rotate-180' : ''}`} />
                         </button>
                       </div>
@@ -317,11 +360,10 @@ export function AdminEmailsRoute() {
                     </div>
                     {openKey === k.key && (
                       <TemplateEditor
-                        key={k.templateId}
                         kind={k}
                         commonVars={commonVars}
                         saving={saving}
-                        onSave={(templateId) => save({ key: k.key, templateId })}
+                        onSave={(patch) => save({ key: k.key, ...patch })}
                       />
                     )}
                   </div>

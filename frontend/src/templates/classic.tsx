@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { localePath, useTr } from '@/lib/lang'
 import { ActivityToast } from '@/components/activity-toast/ActivityToast'
 import { HeroPlayerInline } from '@/routes/HeroPlayerInline'
 import { CountdownTimer } from '@/components/landing/CountdownTimer'
@@ -27,6 +28,7 @@ const FooterCtaSection = lazy(() => import('@/components/landing/FooterCtaSectio
 const LandingFooter = lazy(() => import('@/components/landing/LandingFooter').then(m => ({ default: m.LandingFooter })))
 
 function ClassicRender(d: LandingData) {
+  const tr = useTr()
   const {
     themeSlug, themeStyle, logoUrl,
     fmtCurrency, paymentAmount, originalAmount, deliveryEta, showPrice,
@@ -121,7 +123,7 @@ function ClassicRender(d: LandingData) {
                    />
                    <img
                      src={hero.imageUrl}
-                     alt="Пара с персональной песней — имя в тексте"
+                     alt={tr('Пара с персональной песней — имя в тексте', 'A couple with a personal song — their name in the lyrics')}
                      className="absolute inset-0 h-full w-full object-cover transition-opacity duration-700"
                      loading="eager"
                      fetchPriority="high"
@@ -132,7 +134,7 @@ function ClassicRender(d: LandingData) {
                ) : (
                  <img
                    src={hero.imageUrl}
-                   alt="Пара с персональной песней — имя в тексте"
+                   alt={tr('Пара с персональной песней — имя в тексте', 'A couple with a personal song — their name in the lyrics')}
                    className="h-full w-full object-cover"
                    loading="eager"
                    fetchPriority="high"
@@ -188,7 +190,7 @@ function ClassicRender(d: LandingData) {
                          )}
                          {hero.overlay.authorLocation ? `${hero.overlay.authorName}, ${hero.overlay.authorLocation}` : hero.overlay.authorName}
                          <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-0.5">
-                           <Check className="w-3 h-3" /> Проверено
+                           <Check className="w-3 h-3" /> {tr('Проверено', 'Verified')}
                          </span>
                        </div>
                      </>
@@ -200,12 +202,12 @@ function ClassicRender(d: LandingData) {
 
           <div className="text-center md:text-left space-y-4 md:space-y-6 md:col-start-1 md:row-start-2 order-3 md:order-none">
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-700">{miscText?.heroChipsHeadline || 'Для кого песня?'}</p>
+              <p className="text-sm font-semibold text-gray-700">{miscText?.heroChipsHeadline || tr('Для кого песня?', 'Who is the song for?')}</p>
               <div className="flex flex-wrap justify-center md:justify-start gap-2">
               {hero.chips.map((chip, idx) => (
                 <Link
                   key={idx}
-                  to={`${themeSlug ? `/${themeSlug}` : ''}/config?rel=${encodeURIComponent(chip.value)}`}
+                  to={localePath(`${themeSlug ? `/${themeSlug}` : ''}/config?rel=${encodeURIComponent(chip.value)}`)}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-200 bg-white text-sm sm:text-lg font-semibold text-gray-700 hover:border-[var(--theme-accent)] hover:text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-soft)] transition-all shadow-sm"
                 >
                   {chip.icon && <span>{chip.icon}</span>}
@@ -217,8 +219,8 @@ function ClassicRender(d: LandingData) {
 
             <div className="space-y-2">
               <Button asChild size="lg" className="w-full sm:w-auto h-14 px-10 rounded-full bg-[var(--theme-button)] text-lg font-bold shadow-lg shadow-[var(--theme-accent-soft)] hover:opacity-90 transition-all">
-                <Link to={themeSlug ? `/${themeSlug}/config` : '/config'} className="flex items-center justify-center gap-2">
-                  {miscText?.heroCtaButtonText || 'Создать свою песню'}{showPrice.heroCtaButton ? ` — ${fmtCurrency(paymentAmount)}` : ''}
+                <Link to={localePath(themeSlug ? `/${themeSlug}/config` : '/config')} className="flex items-center justify-center gap-2">
+                  {miscText?.heroCtaButtonText || tr('Создать свою песню', 'Create your song')}{showPrice.heroCtaButton ? ` — ${fmtCurrency(paymentAmount)}` : ''}
                   {showPrice.heroCtaButton && <span className="text-[var(--theme-accent-soft)] line-through font-normal text-sm sm:text-base ml-1">{fmtCurrency(originalAmount)}</span>}
                 </Link>
               </Button>
@@ -232,7 +234,7 @@ function ClassicRender(d: LandingData) {
               </div>
 
               <div className="flex flex-row items-center justify-center gap-2 pt-1">
-                <span className="text-xs font-medium text-gray-500">{miscText?.heroStarLine || '2 847 счастливых историй'}</span>
+                <span className="text-xs font-medium text-gray-500">{miscText?.heroStarLine || tr('2 847 счастливых историй', '2,847 happy stories')}</span>
               </div>
             </div>
           </div>
@@ -393,11 +395,11 @@ function ClassicRender(d: LandingData) {
         <div className="mx-auto max-w-md space-y-2">
            <div className="flex justify-center gap-4 text-[10px] font-bold text-gray-500 uppercase tracking-wide">
              <span className="flex items-center gap-1"><Zap className="h-3 w-3 text-green-500" /> {deliveryEta.short}</span>
-             <span className="flex items-center gap-1"><ShieldCheck className="h-3 w-3 text-green-500" /> Гарантия</span>
+             <span className="flex items-center gap-1"><ShieldCheck className="h-3 w-3 text-green-500" /> {tr('Гарантия', 'Guarantee')}</span>
            </div>
            <Button asChild size="lg" className="w-full h-14 rounded-full bg-[var(--theme-button)] text-lg font-bold shadow-lg shadow-[var(--theme-accent-soft)] hover:opacity-90 active:scale-95 transition-all">
-            <Link to={themeSlug ? `/${themeSlug}/config` : '/config'} className="flex items-center justify-center gap-2 flex-wrap text-center leading-tight">
-              <span>{miscText?.ctaButtonText || 'Создать свою песню'}{showPrice.mobileStickyButton ? ` — ${fmtCurrency(paymentAmount)}` : ''}</span>
+            <Link to={localePath(themeSlug ? `/${themeSlug}/config` : '/config')} className="flex items-center justify-center gap-2 flex-wrap text-center leading-tight">
+              <span>{miscText?.ctaButtonText || tr('Создать свою песню', 'Create your song')}{showPrice.mobileStickyButton ? ` — ${fmtCurrency(paymentAmount)}` : ''}</span>
               {miscText?.mobileCtaQuotaBadge && (
                 <Badge variant="secondary" className="bg-white/20 text-white hover:bg-white/30 text-xs whitespace-nowrap">
                   {miscText.mobileCtaQuotaBadge}

@@ -28,7 +28,8 @@ import { createStepTracker } from './analytics'
 import { NO_BACK_STEPS, stepsFor, type StepId } from './flowConfig'
 import { EMPTY_FORM, type FlowFormState, type FlowOrderState, type StepProps } from './types'
 import { resolveVariant, type FlowVariant } from './variant'
-import { resolveGenre } from '@/flow/types'
+import { answerText, resolveGenre } from '@/flow/types'
+import { getLang, localePath, tr } from '@/lib/lang'
 import { EmailStep, GeneratingStep, ListenStep } from './steps/SongDeliverySteps'
 import { EmotionStep, OccasionStep, RecipientStep, StoryStep } from './steps/SongSteps'
 import {
@@ -156,7 +157,7 @@ function ServerAssignedVariant() {
   useEffect(() => {
     if (state.status === 'loading') return
     const route = state.status === 'ready' ? state.config.route ?? '' : ''
-    navigate(route.startsWith('/create') ? route : '/config', { replace: true })
+    navigate(route.startsWith('/create') ? localePath(route) : localePath('/config'), { replace: true })
   }, [state, navigate])
 
   return (
@@ -458,16 +459,17 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
     const ymMatch = document.cookie.match(/_ym_uid=(\d+)/)
     return {
       recipientName: form.recipientName.trim(),
-      relationship: form.relationship,
-      occasion: form.occasion,
+      // Ответы анкеты уходят в промпт песни: на EN — английский текст ответа.
+      relationship: answerText(form.relationship, getLang()),
+      occasion: answerText(form.occasion, getLang()),
       story: form.story.trim(),
       // Эмоция — основной выбор, жанр (или свой стиль) — необязательное
       // уточнение. Выбора голоса больше нет: пол вокала сервер выводит из
       // адресата (vocalGenderFor).
-      emotion: form.emotion,
+      emotion: answerText(form.emotion, getLang()),
       musicPreferences: {
         genre: resolveGenre(form.genre, form.customStyle),
-        language: 'Russian',
+        language: getLang() === 'en' ? 'English' : 'Russian',
       },
       ...(form.email.trim() ? { email: form.email.trim().toLowerCase() } : {}),
       // Вариант воронки едет в атрибуции заказа — это ключ сравнения A/B на бэке.
@@ -506,7 +508,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : ''
       track(stepId, stepIndex, 'error', { code: msg })
-      setError('Не получилось начать создание песни. Попробуйте ещё раз.')
+      setError(tr('Не получилось начать создание песни. Попробуйте ещё раз.', "Couldn't start creating the song. Please try again."))
     } finally {
       setBusy(false)
     }
@@ -538,7 +540,12 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
       goNext()
     } catch (e) {
       track(stepId, stepIndex, 'error', { code: e instanceof Error ? e.message : '' })
-      setError('Не получилось сохранить адрес. Проверьте email и попробуйте ещё раз.')
+      setError(
+        tr(
+          'Не получилось сохранить адрес. Проверьте email и попробуйте ещё раз.',
+          "Couldn't save your address. Check your email and try again.",
+        ),
+      )
     } finally {
       setBusy(false)
     }
@@ -547,7 +554,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
   /** v2: вопросы о песне доезжают после оплаты — отправляем и идём в генерацию. */
   const submitSongConfig = useCallback(async () => {
     if (!order.orderId) {
-      setError('Заказ не найден. Начните заново с первого шага.')
+      setError(tr('Заказ не найден. Начните заново с первого шага.', 'Order not found. Please start again from the first step.'))
       return
     }
     setBusy(true)
@@ -560,8 +567,8 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
       track(stepId, stepIndex, 'error', { code: msg })
       setError(
         msg === 'already_processing'
-          ? 'Песня уже создаётся — подождите немного.'
-          : 'Не получилось сохранить ответы. Попробуйте ещё раз.',
+          ? tr('Песня уже создаётся — подождите немного.', 'The song is already being created — please wait a moment.')
+          : tr('Не получилось сохранить ответы. Попробуйте ещё раз.', "Couldn't save your answers. Please try again."),
       )
       if (msg === 'already_processing') goNext()
     } finally {
@@ -583,7 +590,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
         await refreshOrder(order.orderId)
         goNext()
       } catch {
-        setError('Не получилось добавить опцию. Попробуйте ещё раз.')
+        setError(tr('Не получилось добавить опцию. Попробуйте ещё раз.', "Couldn't add the option. Please try again."))
       } finally {
         setBusy(false)
       }
@@ -612,7 +619,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
         await refreshOrder(order.orderId)
         goNext()
       } catch {
-        setError('Не получилось оформить доплату. Попробуйте ещё раз.')
+        setError(tr('Не получилось оформить доплату. Попробуйте ещё раз.', "Couldn't process the extra payment. Please try again."))
       } finally {
         setBusy(false)
       }
@@ -660,14 +667,14 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
       const msg = e instanceof Error ? e.message : ''
       track(stepId, stepIndex, 'error', { code: msg })
       if (msg === 'no_saved_method') {
-        navigate(`/subscribe?email=${encodeURIComponent(form.email.trim())}`)
+        navigate(localePath(`/subscribe?email=${encodeURIComponent(form.email.trim())}`))
         return
       }
       if (msg === 'already_active') {
-        setError('У этого email уже есть подписка — сегодняшняя песня и так ваша.')
+        setError(tr('У этого email уже есть подписка — сегодняшняя песня и так ваша.', 'This email already has a subscription — today’s song is already yours.'))
         return
       }
-      setError('Не получилось оформить подписку. Песня уже ваша — попробуйте позже.')
+      setError(tr('Не получилось оформить подписку. Песня уже ваша — попробуйте позже.', "Couldn't activate the subscription. The song is already yours — please try again later."))
     } finally {
       setBusy(false)
     }
@@ -693,7 +700,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
   }
 
   const shareUrl = order.orderId
-    ? `${window.location.origin}/order/${encodeURIComponent(order.orderId)}`
+    ? `${window.location.origin}${localePath(`/order/${encodeURIComponent(order.orderId)}`)}`
     : window.location.origin
   // Оплачен ли заказ — этим, а не позицией шага, определяется поведение
   // апсейлов и сводки: в v2 оплата случается раньше вопросов о песне.
@@ -782,7 +789,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
             }
             // Полная перезагрузка, а не сброс состояния: воронка получает чистый
             // заказ, куки и квоту, как у нового посетителя.
-            window.location.assign(`/create?v=${variant === 'v2' ? '2' : '1'}`)
+            window.location.assign(localePath(`/create?v=${variant === 'v2' ? '2' : '1'}`))
           }}
         />
       )

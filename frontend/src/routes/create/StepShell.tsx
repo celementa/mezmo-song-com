@@ -9,6 +9,7 @@ import type { ReactNode } from 'react'
 import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { useTr } from '@/lib/lang'
 
 export const GOLD = '#F2C572'
 export const INK = '#151210'
@@ -52,6 +53,7 @@ export function StepShell({
   /** Что рисовать под навигацией (ссылка-фолбэк «выбрать жанр»). */
   footer?: ReactNode
 }) {
+  const tr = useTr()
   const progress = Math.round(((stepIndex + 1) / stepTotal) * 100)
 
   return (
@@ -59,7 +61,7 @@ export function StepShell({
       <div className="mx-auto w-full max-w-xl">
         <div className="mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8a6621]">
           <span>
-            Шаг {stepIndex + 1} из {stepTotal}
+            {tr('Шаг', 'Step')} {stepIndex + 1} {tr('из', 'of')} {stepTotal}
           </span>
           <span className="tabular-nums text-[#b39a6d]">{progress}%</span>
         </div>
@@ -95,7 +97,7 @@ export function StepShell({
                   className="inline-flex items-center justify-center gap-1.5 py-1 text-sm font-medium text-[#6b6259] transition hover:text-[#151210] disabled:opacity-40 sm:justify-start sm:py-0"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  Назад
+                  {tr('Назад', 'Back')}
                 </button>
               ) : (
                 <span />

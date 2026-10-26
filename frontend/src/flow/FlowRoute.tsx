@@ -9,7 +9,8 @@ import { trackPixelEvent } from '@/features/analytics/MetaPixel'
 import { trackTikTokEvent } from '@/features/analytics/TikTokPixel'
 import { CREAM } from '@/routes/create/StepShell'
 import type { FlowConfig } from './useFlowConfig'
-import { CUSTOM_GENRE, EMPTY_ANSWERS, GENRES, type FlowAnswers } from './types'
+import { getLang, localePath, useLang, useTr } from '@/lib/lang'
+import { CUSTOM_GENRE, EMPTY_ANSWERS, GENRES, answerFromWire, answerText, type FlowAnswers } from './types'
 import { clearFlowDraft, loadFlowDraft, saveFlowDraft, searchWithStep, stepFromSearch } from './draft'
 import { EmailStep, EmotionStep, OccasionStep, RecipientStep, StoryStep, answersGenre } from './steps/BriefSteps'
 import { GeneratingStep, PreviewStep, SpeedupStep } from './steps/GenerationSteps'
@@ -33,12 +34,12 @@ import type { PaymentMode, PaymentStart } from '@/features/payment/UnitPayChecko
 const OWNED_STEPS = ['recipient', 'occasion', 'email', 'emotion', 'story', 'generating', 'preview', 'speedup', 'compare', 'payment']
 
 // Стрелку к подписи дорисовывает StepShell.
-const NEXT_LABEL: Record<string, string> = {
-  recipient: 'Далее',
-  occasion: 'Далее',
-  email: 'Продолжить',
-  emotion: 'Далее',
-  story: 'Создать песню',
+const NEXT_LABEL: Record<string, [string, string]> = {
+  recipient: ['Далее', 'Next'],
+  occasion: ['Далее', 'Next'],
+  email: ['Продолжить', 'Continue'],
+  emotion: ['Далее', 'Next'],
+  story: ['Создать песню', 'Create my song'],
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -54,6 +55,8 @@ type OrderContent = {
 export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId: string }) {
   const navigate = useNavigate()
   const { pathname, search } = useLocation()
+  const tr = useTr()
+  const lang = useLang()
 
   // Черновик (см. draft.ts) восстанавливается один раз при монтировании. Шаг
   // берётся из адреса (`?s=N` — «назад»/«вперёд» браузера), иначе из черновика.
@@ -176,9 +179,13 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
         if (res.flowVariant !== config.flowVariant) return
         const genre = res.answers.genre ?? ''
         const known = GENRES.some((g) => g.id === genre)
+        // Заказ мог быть создан на английской версии: её подписи возвращаем к ключам.
         const restored: FlowAnswers = {
           ...EMPTY_ANSWERS,
           ...res.answers,
+          relationship: answerFromWire(res.answers.relationship ?? ''),
+          occasion: answerFromWire(res.answers.occasion ?? ''),
+          emotion: answerFromWire(res.answers.emotion ?? ''),
           genre: genre && !known ? CUSTOM_GENRE : genre,
           customStyle: genre && !known ? genre : '',
         }
@@ -193,7 +200,7 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
       .catch((err: unknown) => {
         // 409 not_resumable — заказ оплачен или в генерации: его место на /order.
         if (alive && err instanceof Error && err.message === 'not_resumable') {
-          navigate(`/order/${encodeURIComponent(resumeRef)}`, { replace: true })
+          navigate(localePath(`/order/${encodeURIComponent(resumeRef)}`), { replace: true })
         }
       })
       .finally(() => {
@@ -230,7 +237,7 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
     if (current !== 'emotion' || styleStepTracked.current) return
     styleStepTracked.current = true
     const dataLayer = ((window as unknown as { dataLayer?: Record<string, unknown>[] }).dataLayer ??= [])
-    dataLayer.push({ event: 'reach_style_step', flow_variant: config.flowVariant })
+    dataLayer.push({ event: 'reach_style_step', flow_variant: config.flowVariant, language: getLang() })
   }, [current, config.flowVariant])
 
   const patch = useCallback((fields: Partial<FlowAnswers>) => {
@@ -274,7 +281,7 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
 
   /** Платить нечего (dev-режим, уже оплачен, подписка активна) — на страницу заказа. */
   const goToOrder = useCallback(() => {
-    if (orderRef) navigate(`/order/${encodeURIComponent(orderRef)}`)
+    if (orderRef) navigate(localePath(`/order/${encodeURIComponent(orderRef)}`))
   }, [orderRef, navigate])
 
   /** Заказ создаётся на шаге email: дальше он и есть черновик. */
@@ -289,8 +296,8 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
       whatsappNumber: answers.phone.trim() || null,
       recipientName: answers.recipientName.trim(),
       yourName: answers.recipientName.trim(),
-      occasion: answers.occasion,
-      relationship: answers.relationship,
+      occasion: answerText(answers.occasion, lang),
+      relationship: answerText(answers.relationship, lang),
       ...(answers.recipientGender ? { recipientGender: answers.recipientGender } : {}),
       ...(gaMatch ? { gaClientId: gaMatch[1] } : {}),
       ...(ymMatch ? { ymClientId: ymMatch[1] } : {}),
@@ -302,21 +309,23 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
     const dataLayer = ((window as unknown as { dataLayer?: Record<string, unknown>[] }).dataLayer ??= [])
     dataLayer.push({ event: 'flow_order_created', flow_variant: config.flowVariant })
     return res.orderId
-  }, [answers, sessionId, config.flowVariant])
+  }, [answers, sessionId, config.flowVariant, lang])
 
   const validate = useCallback((): string | null => {
     if (current === 'recipient') {
-      if (!answers.relationship) return 'Выберите, кому дарим песню.'
-      if (!answers.recipientName.trim()) return 'Укажите имя.'
+      if (!answers.relationship) return tr('Выберите, кому дарим песню.', 'Choose who the song is for.')
+      if (!answers.recipientName.trim()) return tr('Укажите имя.', 'Enter a name.')
       if (!answers.recipientGender && (answers.relationship === 'Друг' || answers.relationship === 'Другое')) {
-        return 'Уточните, ему или ей.'
+        return tr('Уточните, ему или ей.', 'Please specify: him or her.')
       }
     }
-    if (current === 'occasion' && !answers.occasion) return 'Выберите повод.'
-    if (current === 'email' && !EMAIL_RE.test(answers.email.trim())) return 'Укажите корректный email.'
-    if (current === 'emotion' && !answers.emotion && !answersGenre(answers)) return 'Выберите эмоцию или жанр.'
+    if (current === 'occasion' && !answers.occasion) return tr('Выберите повод.', 'Choose an occasion.')
+    if (current === 'email' && !EMAIL_RE.test(answers.email.trim())) return tr('Укажите корректный email.', 'Enter a valid email.')
+    if (current === 'emotion' && !answers.emotion && !answersGenre(answers)) {
+      return tr('Выберите эмоцию или жанр.', 'Choose an emotion or a genre.')
+    }
     return null
-  }, [current, answers])
+  }, [current, answers, tr])
 
   const handleNext = useCallback(async () => {
     const invalid = validate()
@@ -333,8 +342,8 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
       }
       if (current === 'emotion' && ref) {
         await apiPatch(`/api/orders/${encodeURIComponent(ref)}/brief`, {
-          emotion: answers.emotion,
-          musicPreferences: { genre: answersGenre(answers), language: 'Russian' },
+          emotion: answerText(answers.emotion, lang),
+          musicPreferences: { genre: answersGenre(answers), language: tr('Russian', 'English') },
         })
       }
       if (current === 'story' && ref) {
@@ -342,11 +351,11 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
       }
       advance(ref)
     } catch {
-      setError('Не получилось сохранить. Попробуйте ещё раз.')
+      setError(tr('Не получилось сохранить. Попробуйте ещё раз.', "Couldn't save that. Please try again."))
     } finally {
       setBusy(false)
     }
-  }, [validate, current, orderRef, createOrder, answers, advance])
+  }, [validate, current, orderRef, createOrder, answers, advance, lang, tr])
 
   const handleBack = useCallback(() => {
     setError(null)
@@ -419,12 +428,13 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
   const shell = {
     stepIndex: globalStep - 1,
     stepTotal: config.steps.length,
-    onBack: stepIndex === 0 ? () => navigate('/') : handleBack,
+    onBack: stepIndex === 0 ? () => navigate(localePath('/')) : handleBack,
     canGoBack: true,
     busy,
     error,
   }
-  const briefProps = { answers, patch, shell, onNext: handleNext, primaryLabel: NEXT_LABEL[current] ?? 'Далее' }
+  const nextLabel = NEXT_LABEL[current] ?? ['Далее', 'Next']
+  const briefProps = { answers, patch, shell, onNext: handleNext, primaryLabel: tr(nextLabel[0], nextLabel[1]) }
 
   if (checkingPaid || resuming) {
     return (
@@ -496,9 +506,9 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
           perMonth={payVia === 'subscription'}
           summary={
             <ul className="space-y-1">
-              <li>Кому: {answers.recipientName.trim()}{answers.relationship ? ` (${answers.relationship.toLowerCase()})` : ''}</li>
-              {answers.occasion && <li>Повод: {answers.occasion}</li>}
-              <li>Песня придёт на {answers.email.trim()}</li>
+              <li>{tr('Кому', 'For')}: {answers.recipientName.trim()}{answers.relationship ? ` (${answerText(answers.relationship, lang).toLowerCase()})` : ''}</li>
+              {answers.occasion && <li>{tr('Повод', 'Occasion')}: {answerText(answers.occasion, lang)}</li>}
+              <li>{tr('Песня придёт на', 'Song will be sent to')} {answers.email.trim()}</li>
             </ul>
           }
           start={payVia === 'subscription' ? startSubscription : startPayment}

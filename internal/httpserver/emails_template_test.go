@@ -52,7 +52,7 @@ func TestSendEmailUsesTemplate(t *testing.T) {
 	ctx := context.Background()
 	smtp := stubMail(t, nil)
 	calls := stubTemplate(t, nil)
-	_ = store.SetEmailTemplateID(ctx, db, emailSongReady, testTemplateID)
+	_ = store.SetEmailTemplateID(ctx, db, emailSongReady, store.LangRU, testTemplateID)
 
 	err := s.sendEmail(ctx, emailSongReady, emailTarget{OrderID: "ord_1"}, "a@x.ru", "Ваша песня готова", "b",
 		map[string]string{"song_url": "https://mezmo.ru/order/x"})
@@ -83,7 +83,7 @@ func TestSendEmailTemplateFailureFallsBackToText(t *testing.T) {
 	ctx := context.Background()
 	smtp := stubMail(t, nil)
 	stubTemplate(t, errors.New("unisender go: HTTP 400 code 114: template not found"))
-	_ = store.SetEmailTemplateID(ctx, db, emailSongReady, testTemplateID)
+	_ = store.SetEmailTemplateID(ctx, db, emailSongReady, store.LangRU, testTemplateID)
 
 	if err := s.sendEmail(ctx, emailSongReady, emailTarget{OrderID: "ord_2"}, "a@x.ru", "Ваша песня готова", "b", nil); err != nil {
 		t.Fatalf("fallback must succeed: %v", err)
@@ -103,7 +103,7 @@ func TestSendEmailRejectedRecipientNoFallback(t *testing.T) {
 	ctx := context.Background()
 	smtp := stubMail(t, nil)
 	stubTemplate(t, fmt.Errorf("%w: unsubscribed", mail.ErrRecipientRejected))
-	_ = store.SetEmailTemplateID(ctx, db, emailSubCharged, testTemplateID)
+	_ = store.SetEmailTemplateID(ctx, db, emailSubCharged, store.LangRU, testTemplateID)
 
 	if err := s.sendEmail(ctx, emailSubCharged, emailTarget{SubscriptionID: "sub_3"}, "a@x.ru", "Подписка продлена", "b", nil); err == nil {
 		t.Fatal("want error")
@@ -123,7 +123,7 @@ func TestSendEmailTemplateNeedsUnisenderGo(t *testing.T) {
 	ctx := context.Background()
 	smtp := stubMail(t, nil)
 	calls := stubTemplate(t, nil)
-	_ = store.SetEmailTemplateID(ctx, db, emailSongReady, testTemplateID)
+	_ = store.SetEmailTemplateID(ctx, db, emailSongReady, store.LangRU, testTemplateID)
 
 	if err := s.sendEmail(ctx, emailSongReady, emailTarget{OrderID: "ord_4"}, "a@x.ru", "Ваша песня готова", "b", nil); err != nil {
 		t.Fatal(err)
@@ -146,13 +146,13 @@ func TestAdminEmailsPutTemplate(t *testing.T) {
 	if rec := put(`{"key":"song_ready","templateId":" ` + strings.ToUpper(testTemplateID) + ` "}`); rec.Code != 200 {
 		t.Fatalf("set: %d %s", rec.Code, rec.Body.String())
 	}
-	if got := store.EmailTemplateID(ctx, db, emailSongReady); got != testTemplateID {
+	if got := store.EmailTemplateID(ctx, db, emailSongReady, store.LangRU); got != testTemplateID {
 		t.Fatalf("stored %q", got)
 	}
 	if rec := put(`{"key":"song_ready","templateId":"не-uuid"}`); rec.Code != 400 || !strings.Contains(rec.Body.String(), "bad_template_id") {
 		t.Fatalf("bad id: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := put(`{"key":"song_ready","templateId":""}`); rec.Code != 200 || store.EmailTemplateID(ctx, db, emailSongReady) != "" {
+	if rec := put(`{"key":"song_ready","templateId":""}`); rec.Code != 200 || store.EmailTemplateID(ctx, db, emailSongReady, store.LangRU) != "" {
 		t.Fatalf("clear: %d", rec.Code)
 	}
 	if rec := put(`{"key":"song_ready"}`); rec.Code != 400 {
@@ -186,7 +186,7 @@ func TestEmailVarsMatchRegistry(t *testing.T) {
 	stubMail(t, nil)
 	calls := stubTemplate(t, nil)
 	for _, k := range emailKinds {
-		_ = store.SetEmailTemplateID(ctx, db, k.Key, testTemplateID)
+		_ = store.SetEmailTemplateID(ctx, db, k.Key, store.LangRU, testTemplateID)
 	}
 
 	sub := store.Subscription{ID: "sub_1", Email: "a@x.ru", CancelToken: "tok",
@@ -214,5 +214,39 @@ func TestEmailVarsMatchRegistry(t *testing.T) {
 				t.Errorf("%s: в реестре {{%s}}, а письмо её не передаёт", kind, v.Name)
 			}
 		}
+	}
+}
+
+// Английский заказ уходит по английскому шаблону, а пока его нет — текстом
+// (английским, его собирает вызывающий), а не по русскому шаблону.
+func TestSendEmailTemplateByOrderLanguage(t *testing.T) {
+	s, db := goServer(t)
+	ctx := context.Background()
+	smtp := stubMail(t, nil)
+	calls := stubTemplate(t, nil)
+	const enTemplateID = "11111111-2222-3333-4444-555555555555"
+	if err := store.CreateOrder(ctx, db, store.Order{ID: "ord_en", Status: "created", DeliveryStatus: store.DeliveryPending,
+		PaymentStatus: store.PaymentPaid, InputPayloadJSON: "{}", CustomerJSON: "{}",
+		Language: sql.NullString{String: store.LangEN, Valid: true}, CreatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	_ = store.SetEmailTemplateID(ctx, db, emailSongReady, store.LangRU, testTemplateID)
+
+	if err := s.sendEmail(ctx, emailSongReady, emailTarget{OrderID: "ord_en"}, "a@x.com", "Your song is ready", "b", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(*calls) != 0 || len(*smtp) != 1 {
+		t.Fatalf("no EN template: template=%d smtp=%d, want 0 and 1", len(*calls), len(*smtp))
+	}
+
+	_ = store.SetEmailTemplateID(ctx, db, emailSongReady, store.LangEN, enTemplateID)
+	if err := s.sendEmail(ctx, emailSongReady, emailTarget{OrderID: "ord_en"}, "a@x.com", "Your song is ready", "b", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(*calls) != 1 || (*calls)[0].templateID != enTemplateID {
+		t.Fatalf("EN template calls %+v, want one with %s", *calls, enTemplateID)
+	}
+	if got := s.publicOrderURL("ord_en"); !strings.HasPrefix(got, "https://mezmo.ru/en/order/") {
+		t.Fatalf("publicOrderURL = %q, want /en/order/ prefix", got)
 	}
 }

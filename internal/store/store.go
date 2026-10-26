@@ -71,6 +71,10 @@ type Order struct {
 	// PaymentProvider — через кого выставлен счёт: unitpay | yookassa; пусто —
 	// счёта не было (бесплатный, тестовый, песня по подписке).
 	PaymentProvider sql.NullString
+	// Language — язык сайта, на котором создан заказ: ru | en (пусто — ru, все
+	// заказы до английской версии). От него зависят промпты песни, письма и
+	// ссылки на сайт в них. Читать через Lang().
+	Language sql.NullString
 	// YooMethodID — способ оплаты, сохранённый ЮKassa при оплате песни
 	// (save_payment_method). По нему апсейл «безлимит за 0 ₽ сегодня»
 	// активирует подписку без второго ввода карты.
@@ -280,6 +284,7 @@ CREATE TABLE IF NOT EXISTS orders (
 	// payment_provider — провайдер, выставивший последний счёт по заказу. Нужен
 	// дашборду: оплаты .com (UnitPay) отделяются от ЮKassa.
 	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN payment_provider TEXT`)
+	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN language TEXT`)
 
 	// kie_task_id / kie_audio_ids — идентификаторы последнего прогона генерации у
 	// Kie.ai. Нужны для точечной правки отрезка аудио (replace-section) и Persona:
@@ -376,15 +381,41 @@ CREATE TABLE IF NOT EXISTS settings (
 	return migrateSubscriptions(db)
 }
 
+// Языки сайта (orders.language).
+const (
+	LangRU = "ru"
+	LangEN = "en"
+)
+
+// Lang — язык заказа: en или ru (по умолчанию).
+func (o Order) Lang() string {
+	return NormalizeLang(o.Language.String)
+}
+
+// NormalizeLang приводит язык из заголовка/колонки к en или ru.
+func NormalizeLang(v string) string {
+	if strings.EqualFold(strings.TrimSpace(v), LangEN) {
+		return LangEN
+	}
+	return LangRU
+}
+
+// OrderLanguage — язык заказа без чтения всей строки; ru, если заказа нет.
+func OrderLanguage(ctx context.Context, db *sql.DB, id string) string {
+	var lang sql.NullString
+	_ = db.QueryRowContext(ctx, `SELECT language FROM orders WHERE id = ?`, id).Scan(&lang)
+	return NormalizeLang(lang.String)
+}
+
 func CreateOrder(ctx context.Context, db *sql.DB, o Order) error {
 	consent := 0
 	if o.EmailConsent {
 		consent = 1
 	}
 	_, err := db.ExecContext(ctx, `
-INSERT INTO orders (id, status, delivery_status, payment_status, input_payload, customer, theme_slug, base_price, discount_code, ga_client_id, ym_client_id, attribution, subscription_id, flow, funnel_stage, email_consent, flow_variant, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		o.ID, o.Status, o.DeliveryStatus, o.PaymentStatus, o.InputPayloadJSON, o.CustomerJSON, o.ThemeSlug, o.BasePrice, o.DiscountCode, o.GAClientID, o.YMClientID, o.AttributionJSON, o.SubscriptionID, o.Flow, o.FunnelStage, consent, o.FlowVariant, o.CreatedAt.UTC().Format(time.RFC3339Nano),
+INSERT INTO orders (id, status, delivery_status, payment_status, input_payload, customer, theme_slug, base_price, discount_code, ga_client_id, ym_client_id, attribution, subscription_id, flow, funnel_stage, email_consent, flow_variant, language, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		o.ID, o.Status, o.DeliveryStatus, o.PaymentStatus, o.InputPayloadJSON, o.CustomerJSON, o.ThemeSlug, o.BasePrice, o.DiscountCode, o.GAClientID, o.YMClientID, o.AttributionJSON, o.SubscriptionID, o.Flow, o.FunnelStage, consent, o.FlowVariant, o.Language, o.CreatedAt.UTC().Format(time.RFC3339Nano),
 	)
 	return err
 }
@@ -402,7 +433,7 @@ FROM orders WHERE id = ?`, id,
 	).Scan(&o.ID, &o.Status, &o.DeliveryStatus, &o.PaymentStatus, &o.InputPayloadJSON, &o.CustomerJSON,
 		&o.ThemeSlug, &o.XenditInvoiceURL, &o.YooPaymentID, &o.BasePrice, &o.DiscountCode, &o.DiscountAmount,
 		&o.PurchaseTrackedAt, &o.ServerTrackedAt, &o.GAClientID, &o.YMClientID, &o.AttributionJSON, &o.AudioURLsJSON, &o.LyricsText, &demoFlag, &o.RegenerationCount, &o.KieTaskID, &o.KieAudioIDs, &o.YooPaymentIDs, &o.YooConfirmation, &o.RefundedKopecks, &o.SubscriptionID, &o.Flow, &o.FunnelStage, &consentFlag, &o.ExtrasSelectedJSON, &o.ExtrasPaidJSON, &o.ExtrasPendingJSON, &o.FollowupSentAt, &created,
-		&o.FlowVariant, &o.PreviewStartedAt, &o.PreviewAudioURL, &o.DeliverAfter, &speedupFlag, &o.ParentOrderID, &o.UpsellKind, &o.ProcessingStartedAt, &o.YooMethodID, &o.DeliveredAt, &o.PaymentProvider)
+		&o.FlowVariant, &o.PreviewStartedAt, &o.PreviewAudioURL, &o.DeliverAfter, &speedupFlag, &o.ParentOrderID, &o.UpsellKind, &o.ProcessingStartedAt, &o.YooMethodID, &o.DeliveredAt, &o.PaymentProvider, &o.Language)
 	if errors.Is(err, sql.ErrNoRows) {
 		return o, ErrNotFound
 	}
@@ -418,7 +449,7 @@ FROM orders WHERE id = ?`, id,
 
 const orderColumns = `id, status, delivery_status, payment_status, input_payload, customer, theme_slug, xendit_invoice_url, yoo_payment_id,
        base_price, discount_code, discount_amount, purchase_tracked_at, server_tracked_at, ga_client_id, ym_client_id, attribution, audio_urls, lyrics_text, demo_completed, regeneration_count, kie_task_id, kie_audio_ids, yoo_payment_ids, yoo_confirmation, refunded_kopecks, subscription_id, flow, funnel_stage, email_consent, extras_selected, extras_paid, extras_pending, followup_sent_at, created_at,
-       flow_variant, preview_started_at, preview_audio_url, deliver_after, speedup_purchased, parent_order_id, upsell_kind, processing_started_at, yoo_payment_method_id, delivered_at, payment_provider`
+       flow_variant, preview_started_at, preview_audio_url, deliver_after, speedup_purchased, parent_order_id, upsell_kind, processing_started_at, yoo_payment_method_id, delivered_at, payment_provider, language`
 
 func scanOrders(rows *sql.Rows) ([]Order, error) {
 	defer rows.Close()
@@ -431,7 +462,7 @@ func scanOrders(rows *sql.Rows) ([]Order, error) {
 		if err := rows.Scan(&o.ID, &o.Status, &o.DeliveryStatus, &o.PaymentStatus, &o.InputPayloadJSON, &o.CustomerJSON,
 			&o.ThemeSlug, &o.XenditInvoiceURL, &o.YooPaymentID, &o.BasePrice, &o.DiscountCode, &o.DiscountAmount,
 			&o.PurchaseTrackedAt, &o.ServerTrackedAt, &o.GAClientID, &o.YMClientID, &o.AttributionJSON, &o.AudioURLsJSON, &o.LyricsText, &demoFlag, &o.RegenerationCount, &o.KieTaskID, &o.KieAudioIDs, &o.YooPaymentIDs, &o.YooConfirmation, &o.RefundedKopecks, &o.SubscriptionID, &o.Flow, &o.FunnelStage, &consentFlag, &o.ExtrasSelectedJSON, &o.ExtrasPaidJSON, &o.ExtrasPendingJSON, &o.FollowupSentAt, &created,
-			&o.FlowVariant, &o.PreviewStartedAt, &o.PreviewAudioURL, &o.DeliverAfter, &speedupFlag, &o.ParentOrderID, &o.UpsellKind, &o.ProcessingStartedAt, &o.YooMethodID, &o.DeliveredAt, &o.PaymentProvider); err != nil {
+			&o.FlowVariant, &o.PreviewStartedAt, &o.PreviewAudioURL, &o.DeliverAfter, &speedupFlag, &o.ParentOrderID, &o.UpsellKind, &o.ProcessingStartedAt, &o.YooMethodID, &o.DeliveredAt, &o.PaymentProvider, &o.Language); err != nil {
 			return nil, err
 		}
 		o.DemoCompleted = demoFlag != 0

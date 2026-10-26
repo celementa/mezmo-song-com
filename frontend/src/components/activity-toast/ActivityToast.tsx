@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
+import { useTr } from '@/lib/lang'
 import type { Loose } from '@/lib/loose'
 
 export type ActivityToastItem = {
@@ -122,6 +123,7 @@ export function ActivityToast({ config }: { config?: ActivityToastConfig | null 
   const [pos, setPos] = useState(0)
   const posRef = useRef(0)
   const [visible, setVisible] = useState(false)
+  const tr = useTr()
 
   const hideTimeoutRef = useRef<number | null>(null)
   const intervalRef = useRef<number | null>(null)
@@ -235,7 +237,7 @@ export function ActivityToast({ config }: { config?: ActivityToastConfig | null 
             <div className="truncate text-xs font-bold text-gray-900 md:text-sm">{item.fullName}</div>
             <div className="text-[10px] text-gray-500 md:text-xs">{item.city}</div>
             <div className="mt-1 text-[10px] text-gray-700 md:text-xs">
-              Заказал(а) песню для{' '}
+              {tr('Заказал(а) песню для', 'Ordered a song for')}{' '}
               <span className="font-semibold text-gray-900">{item.recipientName}</span>
             </div>
           </div>
@@ -243,7 +245,7 @@ export function ActivityToast({ config }: { config?: ActivityToastConfig | null 
             type="button"
             className="ml-1 -mt-0.5 inline-flex h-6 w-6 md:h-7 md:w-7 items-center justify-center rounded-full text-gray-400 hover:bg-gray-50 hover:text-gray-700"
             onClick={() => setVisible(false)}
-            aria-label="Закрыть"
+            aria-label={tr('Закрыть', 'Close')}
           >
             ×
           </button>

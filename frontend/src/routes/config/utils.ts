@@ -1,6 +1,7 @@
 import type { OrderInput } from 'shared'
 
 import { getCurrency, inCurrency, type Currency } from '@/lib/currency'
+import { tr } from '@/lib/lang'
 
 export const CONFIG_DRAFT_STORAGE_KEY = 'laguin:config_draft:v1'
 
@@ -17,7 +18,7 @@ export type PersistedConfigDraft = {
 }
 
 export function fmtCurrency(amt: number, currency: Currency = getCurrency()) {
-  if (amt === 0) return 'Бесплатно'
+  if (amt === 0) return tr('Бесплатно', 'Free')
   // Суммы приходят в долларах; в рублях — пересчёт по курсу (lib/currency.ts).
   // «$25» / «2 140 ₽».
   return new Intl.NumberFormat(currency === 'RUB' ? 'ru-RU' : 'en-US', {

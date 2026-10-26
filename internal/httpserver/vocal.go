@@ -68,7 +68,8 @@ func vocalGenderFor(payload map[string]any, voiceStyle string) string {
 // автора выводится из пола получателя.
 func isPartner(relationship string) bool {
 	switch strings.ToLower(strings.TrimSpace(relationship)) {
-	case "муж", "жена", "парень", "девушка", "любимый", "любимая":
+	case "муж", "жена", "парень", "девушка", "любимый", "любимая",
+		"husband", "wife", "boyfriend", "girlfriend":
 		return true
 	}
 	return false

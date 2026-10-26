@@ -92,7 +92,11 @@ func (s *Server) resumeURL(o store.Order) string {
 		return ""
 	}
 	ref := publicOrderRef(s.Config.WebhookSecret, o.ID)
-	return "/config?arm=" + armLinkName(arm.ID) + "&order=" + url.QueryEscape(ref)
+	path := "/config?arm=" + armLinkName(arm.ID) + "&order=" + url.QueryEscape(ref)
+	if o.Lang() == store.LangEN {
+		path = "/en" + path // английский заказ дооформляется на английской версии
+	}
+	return path
 }
 
 // handlePublicOrderResume отдаёт анкете /config ответы неоплаченного заказа:
@@ -367,6 +371,7 @@ func (s *Server) handleUpsellStems(w http.ResponseWriter, r *http.Request) {
 	if parent.FlowVariant.Valid {
 		child.FlowVariant = parent.FlowVariant
 	}
+	child.Language = parent.Language
 	if err := store.CreateOrder(ctx, s.DB, child); err != nil {
 		log.Printf("[flow] stems parent=%s create err=%v", parentID, err)
 		writeJSON(w, 500, map[string]string{"error": "db"})
@@ -443,10 +448,15 @@ func (s *Server) sendWelcomeEmail(ctx context.Context, orderID string) {
 		return
 	}
 	link := s.publicOrderURL(orderID)
-	body := "Мы начали работу над вашей песней.\n\n" +
-		"Как только черновик будет готов, вы услышите отрывок на этой странице:\n" +
-		link + "\n"
-	if err := s.sendEmail(ctx, emailOrderStarted, emailTarget{OrderID: orderID}, email, "Мы взялись за вашу песню", body,
+	subject, body := "Мы взялись за вашу песню", "Мы начали работу над вашей песней.\n\n"+
+		"Как только черновик будет готов, вы услышите отрывок на этой странице:\n"+
+		link+"\n"
+	if store.OrderLanguage(ctx, s.DB, orderID) == store.LangEN {
+		subject, body = "We've started on your song", "We have started working on your song.\n\n"+
+			"As soon as the draft is ready, you will hear a snippet on this page:\n"+
+			link+"\n"
+	}
+	if err := s.sendEmail(ctx, emailOrderStarted, emailTarget{OrderID: orderID}, email, subject, body,
 		map[string]string{"order_url": link}); err != nil {
 		log.Printf("[flow] welcome order=%s send err=%v", orderID, err)
 	}
@@ -548,11 +558,14 @@ func (s *Server) deliverIfReady(ctx context.Context, orderID, source, intro stri
 		log.Printf("[deliver] %s order=%s email skipped: already delivered once", source, orderID)
 	} else {
 		link := s.publicOrderURL(orderID)
-		body := "Здравствуйте!\n\nВаша персональная песня готова. Слушайте и скачивайте по ссылке:\n" + link
+		subject, body := "Ваша песня готова", "Здравствуйте!\n\nВаша персональная песня готова. Слушайте и скачивайте по ссылке:\n"+link
+		if o.Lang() == store.LangEN {
+			subject, body = "Your song is ready", "Hello!\n\nYour personal song is ready. Listen and download it here:\n"+link
+		}
 		if intro != "" {
 			body = intro + "\n\n" + body
 		}
-		if err := s.sendEmail(ctx, emailSongReady, emailTarget{OrderID: orderID}, email, "Ваша песня готова", body,
+		if err := s.sendEmail(ctx, emailSongReady, emailTarget{OrderID: orderID}, email, subject, body,
 			map[string]string{"song_url": link, "intro": intro}); err != nil {
 			log.Printf("[deliver] %s order=%s send err=%v", source, orderID, err)
 			return false

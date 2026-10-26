@@ -12,6 +12,8 @@ import type { TrackItem } from '@/components/landing/AudioSamplesSection'
 import { resolveSectionOrder, resolveSectionVisibility } from '@/lib/landingSections'
 import { fmtCurrency, ruDaysPhrase, ruHoursPhrase } from '@/routes/config/utils'
 import { inCurrency, useCurrency, type Currency } from '@/lib/currency'
+import { useLang, useTr, type Lang } from '@/lib/lang'
+import enLandingOverlay from '../../intl/landing.en.json'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -505,8 +507,31 @@ function sanitizeHtml(html: string): string {
   return html.replace(/<\/?(?!strong|em|br\s*\/?)([a-z][a-z0-9]*)\b[^>]*>/gi, '')
 }
 
-function fmtCurrencyGlobal(amt: number | null | undefined, currency: Currency) {
-  if (amt === 0) return 'Бесплатно'
+/** Английский оверлей текстов поверх publicSiteConfig: объекты сливаются глубоко, массивы заменяются целиком. */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function deepMerge(base: unknown, over: unknown): unknown {
+  if (isPlainObject(base) && isPlainObject(over)) {
+    const out: Record<string, unknown> = { ...base }
+    for (const k of Object.keys(over)) out[k] = deepMerge(base[k], over[k])
+    return out
+  }
+  return over
+}
+
+function withLangOverlay<T>(cfg: T, lang: Lang): T {
+  if (lang !== 'en' || !isPlainObject(cfg)) return cfg
+  return deepMerge(cfg, enLandingOverlay) as T
+}
+
+function enPhrase(n: number, unit: 'day' | 'hour') {
+  return `${n} ${unit}${n === 1 ? '' : 's'}`
+}
+
+function fmtCurrencyGlobal(amt: number | null | undefined, currency: Currency, lang: Lang) {
+  if (amt === 0) return lang === 'en' ? 'Free' : 'Бесплатно'
   if (amt === null || amt === undefined) return fmtCurrency(25, currency)
   return fmtCurrency(amt, currency)
 }
@@ -526,26 +551,6 @@ function getInlinedConfig(): { cfg: PublicSiteConfig | null | undefined; design:
   return { cfg: undefined, design: null, instantEnabled: null, deliveryDelayHours: null, paymentAmount: null, originalAmount: null }
 }
 
-const defaultReviewItems = [
-  {
-    style: 'white' as const,
-    quote: 'Муж услышал первые строчки и сразу понял, что это про нас. Отложил телефон и просто обнял меня.',
-    authorName: 'Мария К.',
-    authorMeta: 'Подтверждённый покупатель',
-  },
-  {
-    style: 'white' as const,
-    quote: 'Мама плакала 10 минут. Сказала, что это самый красивый подарок, который ей когда-либо делали.',
-    authorName: 'Елена М.',
-    authorMeta: 'Подтверждённый покупатель',
-  },
-  {
-    style: 'white' as const,
-    quote: 'Сделал предложение, пока играла песня. Она сказала «да» ещё до финального куплета. Просто волшебство.',
-    authorName: 'Дмитрий Р.',
-    authorMeta: 'Подтверждённый покупатель',
-  },
-]
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -553,8 +558,32 @@ const defaultReviewItems = [
 
 export function useLandingData(): LandingData {
   const themeSlug = useThemeSlug()
+  const lang = useLang()
+  const tr = useTr()
+  const defaultReviewItems = [
+    {
+      style: 'white' as const,
+      quote: tr('Муж услышал первые строчки и сразу понял, что это про нас. Отложил телефон и просто обнял меня.', 'My husband heard the first lines and knew right away it was about us. He put his phone down and just hugged me.'),
+      authorName: tr('Мария К.', 'Mary K.'),
+      authorMeta: tr('Подтверждённый покупатель', 'Verified customer'),
+    },
+    {
+      style: 'white' as const,
+      quote: tr('Мама плакала 10 минут. Сказала, что это самый красивый подарок, который ей когда-либо делали.', 'Mom cried for 10 minutes. She said it was the most beautiful gift anyone had ever given her.'),
+      authorName: tr('Елена М.', 'Helen M.'),
+      authorMeta: tr('Подтверждённый покупатель', 'Verified customer'),
+    },
+    {
+      style: 'white' as const,
+      quote: tr('Сделал предложение, пока играла песня. Она сказала «да» ещё до финального куплета. Просто волшебство.', 'I proposed while the song was playing. She said yes before the final verse. Pure magic.'),
+      authorName: tr('Дмитрий Р.', 'Dan R.'),
+      authorMeta: tr('Подтверждённый покупатель', 'Verified customer'),
+    },
+  ]
   const _inlined = useMemo(() => getInlinedConfig(), [])
-  const [publicSiteConfig, setPublicSiteConfig] = useState<PublicSiteConfig | null | undefined>(_inlined.cfg)
+  const [rawPublicSiteConfig, setPublicSiteConfig] = useState<PublicSiteConfig | null | undefined>(_inlined.cfg)
+  // Язык меняется навигацией без перезагрузки: оверлей пересчитывается от текущего языка.
+  const publicSiteConfig = useMemo(() => withLangOverlay(rawPublicSiteConfig, lang), [rawPublicSiteConfig, lang])
   // Инициализируемся из инлайн-настроек (window.__SETTINGS__), чтобы реальный
   // шаблон отрисовался сразу на маунте, не дожидаясь /api/public/settings (LCP).
   const [design, setDesign] = useState<string | null>(_inlined.design)
@@ -596,7 +625,7 @@ export function useLandingData(): LandingData {
   // Своя функция на каждую валюту: компоненты, получившие её пропсом, видят
   // новую ссылку и перерисовывают цены при переключении «$ / ₽».
   const currency = useCurrency()
-  const fmtCurrency = useCallback((amt: number | null | undefined) => fmtCurrencyGlobal(amt, currency), [currency])
+  const fmtCurrency = useCallback((amt: number | null | undefined) => fmtCurrencyGlobal(amt, currency, lang), [currency, lang])
 
   // --- Tracking ---
   useEffect(() => {
@@ -618,18 +647,20 @@ export function useLandingData(): LandingData {
   // --- Delivery ETA ---
   const deliveryEta = useMemo<DeliveryEta>(() => {
     if (instantEnabled) {
-      return { label: '2-5 минут', sentenceLower: 'за 2-5 минут', short: '2-5 мин' }
+      return lang === 'en'
+        ? { label: '2-5 minutes', sentenceLower: 'in 2-5 minutes', short: '2-5 min' }
+        : { label: '2-5 минут', sentenceLower: 'за 2-5 минут', short: '2-5 мин' }
     }
     const hRaw = deliveryDelayHours
     const h = typeof hRaw === 'number' && Number.isFinite(hRaw) && hRaw > 0 ? hRaw : 24
     if (h >= 24 && h % 24 === 0) {
       const d = h / 24
-      const phrase = ruDaysPhrase(d)
-      return { label: `За ${phrase}`, sentenceLower: `за ${phrase}`, short: phrase }
+      const phrase = lang === 'en' ? enPhrase(d, 'day') : ruDaysPhrase(d)
+      return { label: tr(`За ${phrase}`, `In ${phrase}`), sentenceLower: tr(`за ${phrase}`, `in ${phrase}`), short: phrase }
     }
-    const phrase = ruHoursPhrase(h)
-    return { label: `За ${phrase}`, sentenceLower: `за ${phrase}`, short: phrase }
-  }, [deliveryDelayHours, instantEnabled])
+    const phrase = lang === 'en' ? enPhrase(h, 'hour') : ruHoursPhrase(h)
+    return { label: tr(`За ${phrase}`, `In ${phrase}`), sentenceLower: tr(`за ${phrase}`, `in ${phrase}`), short: phrase }
+  }, [deliveryDelayHours, instantEnabled, lang, tr])
 
   // --- FAQ items ---
   const faqItems = useMemo<FaqItem[]>(() => {
@@ -639,22 +670,43 @@ export function useLandingData(): LandingData {
         .filter((it: Loose) => it?.q && it?.a)
         .map((it: Loose) => ({ q: String(it.q), a: String(it.a) }))
     }
-    const etaAnswerStart = instantEnabled ? '2-5 минут' : deliveryEta.label
-    const etaAnswer = `Обычно ${etaAnswerStart.toLowerCase()}. Пришлём уведомление на электронную почту, когда будет готово.`
+    const etaAnswerStart = instantEnabled ? tr('2-5 минут', '2-5 minutes') : deliveryEta.label
+    const etaAnswer = tr(
+      `Обычно ${etaAnswerStart.toLowerCase()}. Пришлём уведомление на электронную почту, когда будет готово.`,
+      `Usually ${etaAnswerStart.toLowerCase()}. We'll send you an email as soon as it's ready.`,
+    )
     return [
       {
-        q: 'Он/она «совсем не сентиментальный»…',
-        a: 'Так отвечают почти все 😊 На деле очень многих тронуло до слёз — чем суше фасад, тем сильнее эффект. \ud83d\ude09',
+        q: tr('Он/она «совсем не сентиментальный»…', 'He/she is "not sentimental at all"…'),
+        a: tr(
+          'Так отвечают почти все 😊 На деле очень многих тронуло до слёз — чем суше фасад, тем сильнее эффект. \ud83d\ude09',
+          'That\'s what almost everyone says 😊 In reality, so many people are moved to tears — the drier the exterior, the bigger the effect. \ud83d\ude09',
+        ),
       },
       {
-        q: 'Как человек получит песню?',
-        a: 'Ссылка для скачивания придёт на электронную почту. Можете включить вместе, переслать в мессенджер или преподнести сюрпризом. Это обычный MP3.',
+        q: tr('Как человек получит песню?', 'How will they receive the song?'),
+        a: tr(
+          'Ссылка для скачивания придёт на электронную почту. Можете включить вместе, переслать в мессенджер или преподнести сюрпризом. Это обычный MP3.',
+          'The download link arrives by email. You can play it together, forward it to a messenger, or give it as a surprise. It\'s a regular MP3.',
+        ),
       },
-      { q: 'Как долго ждать?', a: etaAnswer },
-      { q: 'А если результат не понравится?', a: 'Дорабатываем бесплатно, пока не станет ок. Если совсем не зайдёт — полный возврат без лишних вопросов. \ud83d\udc95' },
-      { q: 'Правда бесплатно / со скидкой?', a: `Для первых клиентов — спецусловие (полная цена обычно ${fmtCurrency(originalAmount)}). Скрытых платежей нет.` },
+      { q: tr('Как долго ждать?', 'How long do I wait?'), a: etaAnswer },
+      {
+        q: tr('А если результат не понравится?', 'What if I don\'t like the result?'),
+        a: tr(
+          'Дорабатываем бесплатно, пока не станет ок. Если совсем не зайдёт — полный возврат без лишних вопросов. \ud83d\udc95',
+          'We revise it for free until it\'s right. If it just doesn\'t work, you get a full refund, no questions asked. \ud83d\udc95',
+        ),
+      },
+      {
+        q: tr('Правда бесплатно / со скидкой?', 'Is it really free / discounted?'),
+        a: tr(
+          `Для первых клиентов — спецусловие (полная цена обычно ${fmtCurrency(originalAmount)}). Скрытых платежей нет.`,
+          `For first-time customers — a special offer (the regular price is usually ${fmtCurrency(originalAmount)}). No hidden fees.`,
+        ),
+      },
     ]
-  }, [deliveryEta.label, instantEnabled, publicSiteConfig, originalAmount, fmtCurrency])
+  }, [deliveryEta.label, instantEnabled, publicSiteConfig, originalAmount, fmtCurrency, tr])
 
   // --- Scroll listener for mobile CTA ---
   useEffect(() => {
@@ -671,17 +723,23 @@ export function useLandingData(): LandingData {
       '@context': 'https://schema.org',
       '@type': 'Organization',
       '@id': `${origin}/#organization`,
-      name: 'Персональная песня',
+      name: tr('Персональная песня', 'Personalized song'),
       url: origin,
-      description: 'Персональная песня с именем близкого в тексте. Профессиональная аранжировка.',
+      description: tr(
+        'Персональная песня с именем близкого в тексте. Профессиональная аранжировка.',
+        'A personalized song with your loved one\'s name in the lyrics. Professional arrangement.',
+      ),
       foundingDate: '2024',
       sameAs: [],
     }
     const service = {
       '@context': 'https://schema.org',
       '@type': 'Service',
-      name: 'Персональная песня на заказ',
-      description: `Песня с вашей историей в тексте и студийным звуком. Срок ${deliveryEta.sentenceLower}.`,
+      name: tr('Персональная песня на заказ', 'Custom personalized song'),
+      description: tr(
+        `Песня с вашей историей в тексте и студийным звуком. Срок ${deliveryEta.sentenceLower}.`,
+        `A song with your story in the lyrics and studio-quality sound. Delivered ${deliveryEta.sentenceLower}.`,
+      ),
       provider: { '@id': `${origin}/#organization` },
       offers: {
         '@type': 'Offer',
@@ -722,7 +780,7 @@ export function useLandingData(): LandingData {
       document.getElementById('ld-service')?.remove()
       document.getElementById('ld-faq')?.remove()
     }
-  }, [deliveryEta.sentenceLower, faqItems, publicSiteConfig, paymentAmount, currency])
+  }, [deliveryEta.sentenceLower, faqItems, publicSiteConfig, paymentAmount, currency, tr])
 
   // --- Fetch settings ---
   useEffect(() => {
@@ -841,24 +899,24 @@ export function useLandingData(): LandingData {
     }
     if (!chips.length) {
       chips.push(
-        { label: 'Муж', icon: '', value: 'Муж' },
-        { label: 'Жена', icon: '', value: 'Жена' },
-        { label: 'Парень', icon: '', value: 'Парень' },
-        { label: 'Девушка', icon: '', value: 'Девушка' },
-        { label: 'Мама', icon: '', value: 'Мама' },
-        { label: 'Папа', icon: '', value: 'Папа' },
-        { label: 'Друг', icon: '', value: 'Друг' },
-        { label: 'Другое', icon: '', value: 'Другое' },
+        { label: tr('Муж', 'Husband'), icon: '', value: 'Муж' },
+        { label: tr('Жена', 'Wife'), icon: '', value: 'Жена' },
+        { label: tr('Парень', 'Boyfriend'), icon: '', value: 'Парень' },
+        { label: tr('Девушка', 'Girlfriend'), icon: '', value: 'Девушка' },
+        { label: tr('Мама', 'Mom'), icon: '', value: 'Мама' },
+        { label: tr('Папа', 'Dad'), icon: '', value: 'Папа' },
+        { label: tr('Друг', 'Friend'), icon: '', value: 'Друг' },
+        { label: tr('Другое', 'Other'), icon: '', value: 'Другое' },
       )
     }
     return chips
-  }, [publicSiteConfig])
+  }, [publicSiteConfig, tr])
 
   // ---------------------------------------------------------------------------
   // Derived / resolved data
   // ---------------------------------------------------------------------------
 
-  const selectedDefault = design === 'gold' ? defaultPublicSiteConfigGold : defaultPublicSiteConfig
+  const selectedDefault = withLangOverlay(design === 'gold' ? defaultPublicSiteConfigGold : defaultPublicSiteConfig, lang)
   const site = (publicSiteConfig ?? selectedDefault) as PublicSiteConfig
 
   // Theme style
@@ -888,26 +946,26 @@ export function useLandingData(): LandingData {
   const heroPlayer = landing.heroPlayer ?? selectedDefault.landing!.heroPlayer!
 
   // Trust badges
-  const trustBadge1 = site.trustBadges?.badge1 || `Доставка ${deliveryEta.short}`
-  const trustBadge2 = site.trustBadges?.badge2 || 'Безопасно'
-  const trustBadge3 = site.trustBadges?.badge3 || 'Гарантия результата'
+  const trustBadge1 = site.trustBadges?.badge1 || tr(`Доставка ${deliveryEta.short}`, `Delivered in ${deliveryEta.short}`)
+  const trustBadge2 = site.trustBadges?.badge2 || tr('Безопасно', 'Secure')
+  const trustBadge3 = site.trustBadges?.badge3 || tr('Гарантия результата', 'Result guaranteed')
 
   // Stats bar
   const statsItems = (site.statsBar?.items && site.statsBar.items.length > 0)
     ? site.statsBar.items.map(s => ({ val: s.val || '', label: s.label || '' }))
     : [
-        { val: '99%', label: 'Тронули' },
-        { val: deliveryEta.short, label: 'Срок' },
-        { val: '2 847', label: 'Заказов' },
+        { val: '99%', label: tr('Тронули', 'Touched') },
+        { val: deliveryEta.short, label: tr('Срок', 'Turnaround') },
+        { val: '2 847', label: tr('Заказов', 'Orders') },
       ]
 
   // Promo banner
   const promoBannerRaw = site.promoBanner ?? {}
   const promoBanner: PromoBannerData = {
     enabled: promoBannerRaw.enabled !== false,
-    countdownLabel: promoBannerRaw.countdownLabel || '\ud83d\udc9d До события',
+    countdownLabel: promoBannerRaw.countdownLabel || tr('\ud83d\udc9d До события', '\ud83d\udc9d Until the big day'),
     countdownTargetDate: promoBannerRaw.countdownTargetDate || '2027-02-14',
-    promoBadgeText: promoBannerRaw.promoBadgeText || '\ud83d\udc9d Спецпредложение',
+    promoBadgeText: promoBannerRaw.promoBadgeText || tr('\ud83d\udc9d Спецпредложение', '\ud83d\udc9d Special offer'),
     quotaBadgeText: promoBannerRaw.quotaBadgeText || '',
     evergreenEnabled: promoBannerRaw.evergreenEnabled ?? false,
     evergreenCycleHours: promoBannerRaw.evergreenCycleHours ?? 24,
@@ -915,10 +973,13 @@ export function useLandingData(): LandingData {
 
   // Reviews
   const reviewsSection = site.reviews ?? {}
-  const reviewSectionLabel = reviewsSection.sectionLabel || 'Настоящие реакции'
+  const reviewSectionLabel = reviewsSection.sectionLabel || tr('Настоящие реакции', 'Real reactions')
   const reviewSectionHeadline =
-    reviewsSection.sectionHeadline || '"Он <span class="text-[var(--theme-accent-text)] italic">никогда</span> не плачет"'
-  const reviewSectionSubtext = reviewsSection.sectionSubtext || '…так отвечают почти все. В 98% случаев — не так.'
+    reviewsSection.sectionHeadline || tr(
+      '"Он <span class="text-[var(--theme-accent-text)] italic">никогда</span> не плачет"',
+      '"He <span class="text-[var(--theme-accent-text)] italic">never</span> cries"',
+    )
+  const reviewSectionSubtext = reviewsSection.sectionSubtext || tr('…так отвечают почти все. В 98% случаев — не так.', '…that\'s what most people say. In 98% of cases, it isn\'t so.')
   const reviewItems = (reviewsSection.items && reviewsSection.items.length > 0) ? reviewsSection.items : defaultReviewItems
 
   // Hero headline
@@ -933,7 +994,10 @@ export function useLandingData(): LandingData {
   const heroSubtext =
     typeof landing.heroSubtext === 'string' && landing.heroSubtext.trim()
       ? landing.heroSubtext
-      : (selectedDefault.landing!.heroSubtext || `Персональная песня с <strong>его/её именем</strong> в тексте. Срок ${deliveryEta.sentenceLower}.`)
+      : (selectedDefault.landing!.heroSubtext || tr(
+          `Персональная песня с <strong>его/её именем</strong> в тексте. Срок ${deliveryEta.sentenceLower}.`,
+          `A personalized song with <strong>their name</strong> in the lyrics. Delivered ${deliveryEta.sentenceLower}.`,
+        ))
 
   // Footer CTA
   const footerCtaHeadline =
@@ -1002,21 +1066,21 @@ export function useLandingData(): LandingData {
   const heroPlayingBadgeText =
     typeof (heroPlayer as Loose)?.playingBadgeText === 'string' && String((heroPlayer as Loose).playingBadgeText).trim()
       ? String((heroPlayer as Loose).playingBadgeText).trim()
-      : 'Сейчас'
+      : tr('Сейчас', 'Now')
   const heroCornerBadgeText =
     typeof (heroPlayer as Loose)?.cornerBadgeText === 'string' && String((heroPlayer as Loose).cornerBadgeText).trim()
       ? String((heroPlayer as Loose).cornerBadgeText).trim()
-      : 'Спецпредложение'
+      : tr('Спецпредложение', 'Special offer')
   const heroVerifiedBadgeText =
     typeof (heroPlayer as Loose)?.verifiedBadgeText === 'string' && String((heroPlayer as Loose).verifiedBadgeText).trim()
       ? String((heroPlayer as Loose).verifiedBadgeText).trim()
-      : 'Подтверждённый заказ'
+      : tr('Подтверждённый заказ', 'Verified order')
   const heroStopAfterOnePlay = Boolean((heroPlayer as Loose)?.stopAfterOnePlay)
   const heroUseVideoAudio = Boolean((heroPlayer as Loose)?.useVideoAudio)
   const heroStopCtaButtonText =
     typeof (heroPlayer as Loose)?.stopCtaButtonText === 'string' && String((heroPlayer as Loose).stopCtaButtonText).trim()
       ? String((heroPlayer as Loose).stopCtaButtonText).trim()
-      : 'Создать свою песню'
+      : tr('Создать свою песню', 'Create your song')
 
   // Now playing & playlist
   const nowPlaying = audioSamples.nowPlaying ?? selectedDefault.landing!.audioSamples!.nowPlaying!

@@ -14,6 +14,7 @@ import { GOLD, StepShell } from '../StepShell'
 import { UnitPayCheckout, type PaymentMode, type PaymentStart } from '@/features/payment/UnitPayCheckout'
 import { fmtCurrency } from '@/routes/config/utils'
 import { shellProps, type StepProps } from '../types'
+import { intlLocale, tr as trText, useTr } from '@/lib/lang'
 import { reportEngagement } from '@/lib/engagement'
 
 // Цены .com в долларах; «$ / ₽» на шаге оплаты переключает показ.
@@ -22,11 +23,14 @@ const rub = (n: number) => fmtCurrency(n)
 /** Время доставки в человеческом виде; мусор в дате не должен ломать экран. */
 function formatTime(iso: string): string {
   const at = new Date(iso)
-  return Number.isNaN(at.getTime()) ? 'скоро' : at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  return Number.isNaN(at.getTime())
+    ? trText('скоро', 'soon')
+    : at.toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' })
 }
 
 /** Апсейл ускорения. До оплаты — в основной платёж, после — доплата. */
 export function UpsellSpeedStep(p: StepProps & { onAccept: () => void; afterPayment: boolean }) {
+  const tr = useTr()
   const price = p.order.extraPrices.speed ?? 0
   const already = p.order.extras.includes('speed')
 
@@ -45,10 +49,20 @@ export function UpsellSpeedStep(p: StepProps & { onAccept: () => void; afterPaym
     <StepShell
       {...shellProps(p)}
       canGoBack={p.canGoBack && !p.afterPayment}
-      eyebrow={p.afterPayment ? 'Дополнительно' : 'Перед оплатой'}
-      headline="Хотите получить песню быстрее?"
-      subhead={`Обычно песня готова за 2 часа. ${p.afterPayment ? 'Доплатите' : 'Добавьте ускорение'} — и получите её за 10–30 минут.`}
-      primaryLabel={already ? 'Далее' : `Добавить за ${rub(price)}`}
+      eyebrow={p.afterPayment ? tr('Дополнительно', 'Extra') : tr('Перед оплатой', 'Before payment')}
+      headline={tr('Хотите получить песню быстрее?', 'Want your song faster?')}
+      subhead={
+        p.afterPayment
+          ? tr(
+              'Обычно песня готова за 2 часа. Доплатите — и получите её за 10–30 минут.',
+              'Songs usually take about 2 hours. Pay the difference and get yours in 10–30 minutes.',
+            )
+          : tr(
+              'Обычно песня готова за 2 часа. Добавьте ускорение — и получите её за 10–30 минут.',
+              'Songs usually take about 2 hours. Add the speed-up and get yours in 10–30 minutes.',
+            )
+      }
+      primaryLabel={already ? tr('Далее', 'Next') : tr(`Добавить за ${rub(price)}`, `Add for ${rub(price)}`)}
       onPrimary={() => {
         if (already) {
           p.onNext()
@@ -57,7 +71,7 @@ export function UpsellSpeedStep(p: StepProps & { onAccept: () => void; afterPaym
         p.track(p.stepId, p.stepIndex, 'submit', { extra: 'speed', price })
         p.onAccept()
       }}
-      secondaryLabel={already ? undefined : 'Не нужно'}
+      secondaryLabel={already ? undefined : tr('Не нужно', 'No thanks')}
       onSecondary={() => {
         p.track(p.stepId, p.stepIndex, 'skip', { extra: 'speed' })
         p.onNext()
@@ -71,14 +85,16 @@ export function UpsellSpeedStep(p: StepProps & { onAccept: () => void; afterPaym
           <div>
             <div className="text-sm font-bold text-[#151210]">+{rub(price)}</div>
             <div className="text-xs text-[#6b6259]">
-              {p.afterPayment ? 'Отдельный платёж' : `итого ${rub(p.price + price)}`}
+              {p.afterPayment
+                ? tr('Отдельный платёж', 'Separate payment')
+                : tr(`итого ${rub(p.price + price)}`, `total ${rub(p.price + price)}`)}
             </div>
           </div>
         </div>
       </div>
       {already ? (
         <p className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#2f7a45]">
-          <Check className="h-4 w-4" /> Ускорение добавлено к заказу
+          <Check className="h-4 w-4" /> {tr('Ускорение добавлено к заказу', 'Speed-up added to your order')}
         </p>
       ) : null}
     </StepShell>
@@ -91,6 +107,7 @@ export function UpsellSpeedStep(p: StepProps & { onAccept: () => void; afterPaym
  * продолжается со следующего шага.
  */
 export function PaymentStep(p: StepProps & { start: (mode: PaymentMode) => Promise<PaymentStart>; onPaid: () => void }) {
+  const tr = useTr()
   const extrasSum = p.order.extras.reduce((sum, id) => sum + (p.order.extraPrices[id] ?? 0), 0)
   const total = p.order.paymentAmount ?? p.price + extrasSum
 
@@ -99,7 +116,9 @@ export function PaymentStep(p: StepProps & { start: (mode: PaymentMode) => Promi
       shell={shellProps(p)}
       amount={total}
       original={p.originalPrice}
-      summary={p.form.email ? <p>Ссылка на песню придёт на {p.form.email}</p> : null}
+      summary={
+        p.form.email ? <p>{tr(`Ссылка на песню придёт на ${p.form.email}`, `The song link will be sent to ${p.form.email}`)}</p> : null
+      }
       start={(mode) => {
         p.track(p.stepId, p.stepIndex, 'submit', { total })
         return p.start(mode)
@@ -118,14 +137,21 @@ export function PaymentStep(p: StepProps & { start: (mode: PaymentMode) => Promi
 export function UpsellSubscriptionStep(
   p: StepProps & { subscriptionPrice: number; subscribed: boolean; onSubscribe: () => void },
 ) {
+  const tr = useTr()
   return (
     <StepShell
       {...shellProps(p)}
       canGoBack={false}
-      eyebrow="Спасибо за оплату"
-      headline="Ваша песня оплачена — но у нас есть идея получше"
-      subhead="За те же деньги вы можете получать неограниченное число песен каждый месяц, а не одну разово."
-      primaryLabel={p.subscribed ? 'Далее' : 'Перейти на безлимит за $0'}
+      eyebrow={tr('Спасибо за оплату', 'Thank you for your payment')}
+      headline={tr(
+        'Ваша песня оплачена — но у нас есть идея получше',
+        'Your song is paid for — but we have a better idea',
+      )}
+      subhead={tr(
+        'За те же деньги вы можете получать неограниченное число песен каждый месяц, а не одну разово.',
+        'For the same price you can get unlimited songs every month, not just one.',
+      )}
+      primaryLabel={p.subscribed ? tr('Далее', 'Next') : tr('Перейти на безлимит за $0', 'Get unlimited for $0')}
       onPrimary={() => {
         if (p.subscribed) {
           p.onNext()
@@ -134,7 +160,7 @@ export function UpsellSubscriptionStep(
         p.track(p.stepId, p.stepIndex, 'submit', { price: 0, monthly: p.subscriptionPrice })
         p.onSubscribe()
       }}
-      secondaryLabel={p.subscribed ? undefined : 'Не сейчас'}
+      secondaryLabel={p.subscribed ? undefined : tr('Не сейчас', 'Not now')}
       onSecondary={() => {
         p.track(p.stepId, p.stepIndex, 'skip')
         p.onNext()
@@ -142,12 +168,14 @@ export function UpsellSubscriptionStep(
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-2xl border border-[#EFE4D2] bg-white p-4">
-          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#9c9186]">То, что вы купили</div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#9c9186]">
+            {tr('То, что вы купили', 'What you bought')}
+          </div>
           <div className="mt-1.5 text-xl font-bold text-[#151210]">{rub(p.price)}</div>
-          <div className="text-xs text-[#9c9186]">разово, 1 песня</div>
+          <div className="text-xs text-[#9c9186]">{tr('разово, 1 песня', 'one-time, 1 song')}</div>
           <ul className="mt-3 space-y-1.5 text-xs text-[#6b6259]">
-            <li>• 1 готовая песня</li>
-            <li>• Доступ навсегда</li>
+            <li>• {tr('1 готовая песня', '1 finished song')}</li>
+            <li>• {tr('Доступ навсегда', 'Lifetime access')}</li>
           </ul>
         </div>
         <div className="relative rounded-2xl border-2 border-[#e3c98f] bg-[#FCF6EA] p-4">
@@ -155,25 +183,30 @@ export function UpsellSubscriptionStep(
             className="absolute -top-2.5 right-3 rounded-full px-2 py-0.5 text-[10px] font-bold text-[#151210]"
             style={{ background: GOLD }}
           >
-            Выгоднее
+            {tr('Выгоднее', 'Best value')}
           </span>
-          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8a6621]">Безлимит</div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8a6621]">
+            {tr('Безлимит', 'Unlimited')}
+          </div>
           <div className="mt-1.5 text-xl font-bold text-[#151210]">$0</div>
-          <div className="text-xs text-[#9c9186]">сегодня, без ограничений</div>
+          <div className="text-xs text-[#9c9186]">{tr('сегодня, без ограничений', 'today, no limits')}</div>
           <ul className="mt-3 space-y-1.5 text-xs text-[#6b6259]">
-            <li>• Неограниченное число песен</li>
-            <li>• Отмена в любой момент</li>
-            <li>• Сегодняшняя песня уже включена</li>
+            <li>• {tr('Неограниченное число песен', 'Unlimited number of songs')}</li>
+            <li>• {tr('Отмена в любой момент', 'Cancel anytime')}</li>
+            <li>• {tr('Сегодняшняя песня уже включена', "Today's song is already included")}</li>
           </ul>
         </div>
       </div>
       {p.subscribed ? (
         <p className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#2f7a45]">
-          <Check className="h-4 w-4" /> Подписка оформлена — письмо с деталями уже у вас
+          <Check className="h-4 w-4" /> {tr('Подписка оформлена — письмо с деталями уже у вас', 'Subscription activated — the details are in your inbox')}
         </p>
       ) : (
         <p className="mt-3 text-center text-xs text-[#9c9186]">
-          Далее — {rub(p.subscriptionPrice)}/мес, спишем через месяц. Отмена в любой момент.
+          {tr(
+            `Далее — ${rub(p.subscriptionPrice)}/мес, спишем через месяц. Отмена в любой момент.`,
+            `Next — ${rub(p.subscriptionPrice)}/month, billed in a month. Cancel anytime.`,
+          )}
         </p>
       )}
     </StepShell>
@@ -182,6 +215,7 @@ export function UpsellSubscriptionStep(
 
 /** Апсейл стемов — доплата после оплаты песни. */
 export function UpsellStemsStep(p: StepProps & { onAccept: () => void }) {
+  const tr = useTr()
   // Как и у ускорения: нулевая цена значит «отдать нечем» (разделение дорожек
   // у Kie.ai не подключено), и шаг пропускается.
   const stemsDisabled = Object.keys(p.order.extraPrices).length > 0 && (p.order.extraPrices.stems ?? 0) <= 0
@@ -197,12 +231,15 @@ export function UpsellStemsStep(p: StepProps & { onAccept: () => void }) {
     <StepShell
       {...shellProps(p)}
       canGoBack={false}
-      eyebrow="Пока песня свежая"
-      headline="Добавить инструментал и вокал отдельно?"
-      subhead="Отдельные дорожки — чтобы спеть самому под минус или смонтировать видео."
+      eyebrow={tr('Пока песня свежая', 'While the song is fresh')}
+      headline={tr('Добавить инструментал и вокал отдельно?', 'Add instrumental and vocals separately?')}
+      subhead={tr(
+        'Отдельные дорожки — чтобы спеть самому под минус или смонтировать видео.',
+        'Separate tracks, so you can sing along or edit a video.',
+      )}
       // Допник уже куплен (возврат с отдельного платежа): единственная дорога
       // дальше — «Далее», а не «Не нужно» под только что оплаченным.
-      primaryLabel={already ? 'Далее' : `Да, добавить за ${rub(price)}`}
+      primaryLabel={already ? tr('Далее', 'Next') : tr(`Да, добавить за ${rub(price)}`, `Yes, add for ${rub(price)}`)}
       onPrimary={() => {
         if (already) {
           p.onNext()
@@ -211,18 +248,21 @@ export function UpsellStemsStep(p: StepProps & { onAccept: () => void }) {
         p.track(p.stepId, p.stepIndex, 'submit', { extra: 'stems', price })
         p.onAccept()
       }}
-      secondaryLabel={already ? undefined : 'Не нужно'}
+      secondaryLabel={already ? undefined : tr('Не нужно', 'No thanks')}
       onSecondary={() => {
         p.track(p.stepId, p.stepIndex, 'skip', { extra: 'stems' })
         p.onNext()
       }}
     >
       <div className="rounded-2xl border border-[#EFE4D2] bg-[#FDFBF7] p-4 text-sm text-[#6b6259]">
-        Отдельный платёж на {rub(price)} — вернёмся сюда сразу после оплаты.
+        {tr(
+          `Отдельный платёж на ${rub(price)} — вернёмся сюда сразу после оплаты.`,
+          `A separate payment of ${rub(price)} — we will bring you back here right after it.`,
+        )}
       </div>
       {already ? (
         <p className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#2f7a45]">
-          <Check className="h-4 w-4" /> Дорожки добавлены к заказу
+          <Check className="h-4 w-4" /> {tr('Дорожки добавлены к заказу', 'Tracks added to your order')}
         </p>
       ) : null}
     </StepShell>
@@ -231,14 +271,22 @@ export function UpsellStemsStep(p: StepProps & { onAccept: () => void }) {
 
 /** Финал: скачать MP3 и перейти на страницу заказа. */
 export function DoneStep(p: StepProps & { tracks: string[]; orderUrl: string; onRestart: () => void }) {
+  const tr = useTr()
   const track = p.tracks[0] ?? ''
   return (
-    <StepShell {...shellProps(p)} canGoBack={false} eyebrow="Готово" hideNav>
+    <StepShell {...shellProps(p)} canGoBack={false} eyebrow={tr('Готово', 'Done')} hideNav>
       <div className="flex flex-col items-center py-4 text-center">
         <PartyPopper className="h-10 w-10 text-[#B9852E]" />
-        <h2 className="mt-4 font-[Prata,serif] text-[24px] text-[#151210]">Ваша песня готова!</h2>
+        <h2 className="mt-4 font-[Prata,serif] text-[24px] text-[#151210]">
+          {tr('Ваша песня готова!', 'Your song is ready!')}
+        </h2>
         <p className="mt-2 text-sm text-[#6b6259]">
-          Копию отправили на почту{p.form.email ? ` ${p.form.email}` : ''} — не потеряется.
+          {p.form.email
+            ? tr(
+                `Копию отправили на почту ${p.form.email} — не потеряется.`,
+                `We sent a copy to ${p.form.email} — it won't get lost.`,
+              )
+            : tr('Копию отправили на почту — не потеряется.', "We sent a copy to your inbox — it won't get lost.")}
         </p>
 
         {p.order.deliveryHeld ? (
@@ -246,9 +294,11 @@ export function DoneStep(p: StepProps & { tracks: string[]; orderUrl: string; on
           // именно снятие этого ожидания продаёт ускорение). Кнопка «Скачать»
           // здесь вернула бы 404, поэтому вместо неё честный срок.
           <p className="mt-6 rounded-2xl border border-[#EFE4D2] bg-[#FDFBF7] px-4 py-3 text-sm leading-relaxed text-[#6b6259]">
-            Песня готовится. Пришлём её на email
-            {p.order.deliverAt ? ` примерно к ${formatTime(p.order.deliverAt)}` : ' совсем скоро'} — страница заказа
-            обновится сама.
+            {tr('Песня готовится. Пришлём её на email', 'Your song is being prepared. We will email it to you')}
+            {p.order.deliverAt
+              ? tr(` примерно к ${formatTime(p.order.deliverAt)}`, ` around ${formatTime(p.order.deliverAt)}`)
+              : tr(' совсем скоро', ' very soon')}
+            {tr(' — страница заказа обновится сама.', ' — the order page will update on its own.')}
           </p>
         ) : track ? (
           <a
@@ -262,12 +312,12 @@ export function DoneStep(p: StepProps & { tracks: string[]; orderUrl: string; on
             style={{ background: `linear-gradient(135deg,#f6dfa3 0%, ${GOLD} 40%, #B9852E 100%)` }}
           >
             <Download className="h-4 w-4" />
-            Скачать MP3
+            {tr('Скачать MP3', 'Download MP3')}
           </a>
         ) : null}
 
         <a href={p.orderUrl} className="mt-4 text-sm font-medium text-[#8a6621] underline underline-offset-4">
-          Открыть страницу заказа
+          {tr('Открыть страницу заказа', 'Open order page')}
         </a>
 
         {/* Вторая песня начинается отсюда: письмо-догонка с промокодом ведёт на
@@ -281,7 +331,7 @@ export function DoneStep(p: StepProps & { tracks: string[]; orderUrl: string; on
           }}
           className="mt-3 text-sm font-medium text-[#6b6259] underline underline-offset-4"
         >
-          Создать ещё одну песню
+          {tr('Создать ещё одну песню', 'Create another song')}
         </button>
       </div>
     </StepShell>

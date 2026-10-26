@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, useRouteError, isRouteErrorResponse } from 'react-router-dom'
+import { createBrowserRouter, useRouteError, isRouteErrorResponse, type RouteObject } from 'react-router-dom'
 
 import { LandingRoute } from '@/routes/LandingRoute'
 import { PublicRoot } from '@/features/analytics/PublicRoot'
 import { ThemeProvider } from '@/features/theme/ThemeContext'
+import { localePath, tr } from '@/lib/lang'
 
 // mezmo-song.com: лендинг, две воронки заказа (/config — анкета, потом оплата;
 // /create — оплата в начале), страница заказа, юридические страницы и админка.
@@ -34,61 +35,68 @@ function RouteErrorFallback() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
-      <h1 className="text-4xl font-bold text-gray-800">{is404 ? '404' : 'Ошибка'}</h1>
+      <h1 className="text-4xl font-bold text-gray-800">{is404 ? '404' : tr('Ошибка', 'Error')}</h1>
       <p className="mt-2 text-gray-600">
-        {is404 ? 'Страница не найдена.' : 'Что-то пошло не так. Попробуйте ещё раз.'}
+        {is404 ? tr('Страница не найдена.', 'Page not found.') : tr('Что-то пошло не так. Попробуйте ещё раз.', 'Something went wrong. Please try again.')}
       </p>
       <button
         type="button"
-        onClick={() => window.location.assign('/')}
+        onClick={() => window.location.assign(localePath('/'))}
         className="mt-6 rounded-lg bg-[var(--theme-accent,#D4AF37)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90"
       >
-        На главную
+        {tr('На главную', 'Back to home')}
       </button>
     </div>
   )
 }
+
+// Публичные страницы сайта. Английская версия — те же страницы под /en
+// (src/lib/lang.ts); язык компоненты берут из адреса.
+const publicPages: RouteObject[] = [
+  {
+    path: '/',
+    element: (
+      <ThemeProvider themeSlug={null}>
+        <LandingRoute />
+      </ThemeProvider>
+    ),
+  },
+  {
+    path: '/config',
+    element: (
+      <Suspense fallback={<LazyFallback />}>
+        <ThemeProvider themeSlug={null}>
+          <FlowEntry />
+        </ThemeProvider>
+      </Suspense>
+    ),
+  },
+  {
+    // Воронка «оплата в начале» (плечи variant4): FlowEntry уводит сюда по
+    // route плеча, ?v=2 закрепляется в localStorage.
+    path: '/create',
+    element: (
+      <Suspense fallback={<LazyFallback />}>
+        <CreateRoute />
+      </Suspense>
+    ),
+  },
+  { path: '/thanks', element: <Suspense fallback={<LazyFallback />}><ThanksRoute /></Suspense> },
+  { path: '/order/:orderId', element: <Suspense fallback={<LazyFallback />}><OrderDeliveryRoute /></Suspense> },
+  { path: '/terms', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="terms" /></Suspense> },
+  { path: '/privacy', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="privacy" /></Suspense> },
+  { path: '/security', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="security" /></Suspense> },
+  { path: '/consent', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="consent" /></Suspense> },
+  { path: '/contacts', element: <Suspense fallback={<LazyFallback />}><ContactPage /></Suspense> },
+]
 
 export const router = createBrowserRouter([
   {
     element: <PublicRoot />,
     errorElement: <RouteErrorFallback />,
     children: [
-      {
-        path: '/',
-        element: (
-          <ThemeProvider themeSlug={null}>
-            <LandingRoute />
-          </ThemeProvider>
-        ),
-      },
-      {
-        path: '/config',
-        element: (
-          <Suspense fallback={<LazyFallback />}>
-            <ThemeProvider themeSlug={null}>
-              <FlowEntry />
-            </ThemeProvider>
-          </Suspense>
-        ),
-      },
-      {
-        // Воронка «оплата в начале» (плечи variant4): FlowEntry уводит сюда по
-        // route плеча, ?v=2 закрепляется в localStorage.
-        path: '/create',
-        element: (
-          <Suspense fallback={<LazyFallback />}>
-            <CreateRoute />
-          </Suspense>
-        ),
-      },
-      { path: '/thanks', element: <Suspense fallback={<LazyFallback />}><ThanksRoute /></Suspense> },
-      { path: '/order/:orderId', element: <Suspense fallback={<LazyFallback />}><OrderDeliveryRoute /></Suspense> },
-      { path: '/terms', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="terms" /></Suspense> },
-      { path: '/privacy', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="privacy" /></Suspense> },
-      { path: '/security', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="security" /></Suspense> },
-      { path: '/consent', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="consent" /></Suspense> },
-      { path: '/contacts', element: <Suspense fallback={<LazyFallback />}><ContactPage /></Suspense> },
+      ...publicPages,
+      ...publicPages.map((page) => ({ ...page, path: page.path === '/' ? '/en' : `/en${page.path}` })),
     ],
   },
   // Страницы админки Go отдаёт только после входа (cmd/server/adminauth.go).

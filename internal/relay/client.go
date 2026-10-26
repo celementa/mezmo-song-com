@@ -133,6 +133,8 @@ type OrderPayload struct {
 	// а не поставить род по умолчанию: угаданный неверно род это жалоба
 	// «вместо „она“ поёт „он“».
 	RecipientGender string
+	// Language — язык заказа (ru | en): на нём пишутся текст песни и правки.
+	Language string
 }
 
 // Trigger generates lyrics via OpenRouter, then queues music on Kie.ai.
@@ -247,7 +249,7 @@ func (c Client) generateLyrics(ctx context.Context, p OrderPayload) (string, err
 
 // editLyrics правит готовый текст по просьбе пользователя, а не сочиняет новый.
 func (c Client) editLyrics(ctx context.Context, p OrderPayload, currentLyrics, instruction string) (string, error) {
-	content, err := c.chat(ctx, p.OrderID, "edit", buildEditPrompt(currentLyrics, instruction))
+	content, err := c.chat(ctx, p.OrderID, "edit", buildEditPrompt(p.Language, currentLyrics, instruction))
 	if err != nil {
 		return "", err
 	}
@@ -363,6 +365,9 @@ func (c Client) queueKie(ctx context.Context, p OrderPayload, lyrics string) err
 	title := p.Recipient
 	if title == "" {
 		title = "Персональная песня"
+		if p.Language == "en" {
+			title = "Personal song"
+		}
 	}
 	if len([]rune(title)) > 80 {
 		title = string([]rune(title)[:80])

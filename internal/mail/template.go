@@ -44,10 +44,10 @@ func SendTemplate(cfg config.Config, to, templateID string, vars map[string]stri
 		"from_email":      cfg.SMTPFrom,
 		"from_name":       cfg.SMTPFromName,
 		// Те же опции, что у SMTP-писем (unisenderGoHeader): ссылки без
-		// редиректа Go, прочтения считаются, страница отписки на русском.
+		// редиректа Go, прочтения считаются, страница отписки на языке письма.
 		"track_links":     0,
 		"track_read":      1,
-		"global_language": "ru",
+		"global_language": tr.language(),
 	}
 	if cfg.MailReplyTo != "" {
 		msg["reply_to"] = cfg.MailReplyTo

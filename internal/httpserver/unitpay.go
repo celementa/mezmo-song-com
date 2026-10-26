@@ -110,7 +110,7 @@ func (s *Server) initiateUnitPay(w http.ResponseWriter, r *http.Request, o store
 		}
 	}
 
-	backURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/"
+	backURL := s.siteURL(o.Lang()) + "/"
 	res, err := up.InitPayment(payment.UnitPayInitRequest{
 		Account:   o.ID,
 		Sum:       sum,
@@ -118,7 +118,7 @@ func (s *Server) initiateUnitPay(w http.ResponseWriter, r *http.Request, o store
 		Desc:      "Personal song / Персональная песня",
 		ResultURL: returnURL,
 		BackURL:   backURL,
-		Locale:    "ru",
+		Locale:    o.Lang(), // язык формы оплаты UnitPay: ru | en
 		IP:        publicIPOrEmpty(clientIP(r)),
 	})
 	if err != nil {

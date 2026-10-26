@@ -4,6 +4,7 @@ import { Play, Pause, Music, SkipBack, SkipForward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { resolveApiUrl } from '@/lib/http'
+import { localePath, useTr } from '@/lib/lang'
 
 const LANDING_AUDIO_EVENT = 'landing-audio-playing'
 const SOURCE_SAMPLES = 'samples'
@@ -240,15 +241,20 @@ export function AudioSamplesSection({
   showPriceInButton = true,
   themeSlug,
   sectionBadge: _sectionBadge = 'Нажми «Играть»',
-  sectionHeadline =
-    'Добавьте <span class="text-white italic">имя</span> вашего близкого в песню',
+  sectionHeadline: sectionHeadlineProp,
   sectionSubtext: _sectionSubtext = 'Наши аранжировки, ваши имена, живые эмоции.',
   otherLabel: _otherLabel = 'Ещё примеры',
   ctaLine: _ctaLine = 'Представьте его/её имя в такой песне…',
-  ctaButtonText = 'Создать свою песню',
+  ctaButtonText: ctaButtonTextProp,
   backgroundColor = '#030712',
   sectionClassName,
 }: Props) {
+  const tr = useTr()
+  const sectionHeadline = sectionHeadlineProp ?? tr(
+    'Добавьте <span class="text-white italic">имя</span> вашего близкого в песню',
+    'Add <span class="text-white italic">their name</span> to a song just for them',
+  )
+  const ctaButtonText = ctaButtonTextProp ?? tr('Создать свою песню', 'Create your song')
   const currentTrack = allTracks[selectedTrackIndex] ?? allTracks[0]
 
   return (
@@ -315,7 +321,7 @@ export function AudioSamplesSection({
         {/* CTA */}
         <div className="mt-8 text-center">
           <Button asChild size="lg" className="w-full rounded-full bg-[var(--theme-accent)] hover:bg-[var(--theme-accent)] text-[var(--theme-button-text)] text-sm sm:text-base font-bold uppercase tracking-wider shadow-lg hover:opacity-90 h-auto py-3">
-            <Link data-landing-cta to={themeSlug ? `/${themeSlug}/config` : '/config'} className="flex flex-col items-center justify-center gap-0.5 px-4 w-full">
+            <Link data-landing-cta to={localePath(themeSlug ? `/${themeSlug}/config` : '/config')} className="flex flex-col items-center justify-center gap-0.5 px-4 w-full">
               <span className="leading-tight">{ctaButtonText}{showPriceInButton ? ` — ${fmtCurrency(paymentAmount)}` : ''}</span>
               {showPriceInButton && originalAmount && originalAmount > (paymentAmount ?? 0) && (
                 <span className="text-xs font-normal line-through opacity-60 normal-case tracking-normal">{fmtCurrency(originalAmount)}</span>

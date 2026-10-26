@@ -1,11 +1,14 @@
+import { useTr } from '@/lib/lang'
+
 /**
  * Знаки платёжных систем — UnitPay требует их на сайте рядом с оплатой и в
  * футере. Простые встроенные SVG: без внешних запросов и одинаково на светлом
  * и тёмном фоне (у каждого знака своя белая плашка).
  */
 export function PaymentLogos({ className = '' }: { className?: string }) {
+  const tr = useTr()
   return (
-    <div className={`flex items-center gap-2 ${className}`} aria-label="Принимаем к оплате Visa и Mastercard">
+    <div className={`flex items-center gap-2 ${className}`} aria-label={tr('Принимаем к оплате Visa и Mastercard', 'We accept Visa and Mastercard')}>
       <svg viewBox="0 0 48 30" className="h-6 w-auto" role="img" aria-label="Visa">
         <rect width="48" height="30" rx="4" fill="#fff" stroke="#E5E7EB" />
         <text x="24" y="20" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontSize="13" fontStyle="italic" fontWeight="800" fill="#1A1F71">

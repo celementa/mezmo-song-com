@@ -1,0 +1,189 @@
+{
+  "faqSection": {
+    "headline": "Frequently asked questions",
+    "items": [
+      {
+        "q": "Do you use real songwriters?",
+        "a": "Yes, every song is written by a real, professional songwriter. AI helps with the melody and arrangement."
+      },
+      {
+        "q": "How long until my song is ready?",
+        "a": "Usually 10–30 minutes. It can take longer during peak hours."
+      },
+      {
+        "q": "Is there a guarantee?",
+        "a": "Yes, a 100% refund if you don't like it. We revise the song for free until it's right."
+      },
+      {
+        "q": "What genres are available?",
+        "a": "Pop ballad, acoustic, rock and more. You choose when you place your order."
+      },
+      {
+        "q": "Is this just AI with no human involved?",
+        "a": "A real songwriter writes the lyrics for your story, and AI helps with the music. It's not a template. It's a song made just for you."
+      },
+      {
+        "q": "Can I give it for any occasion?",
+        "a": "Yes: birthdays, anniversaries, proposals, graduations, or just because. Any occasion works. The story is what matters."
+      }
+    ]
+  },
+  "footer": {
+    "disclaimer": ""
+  },
+  "heroCheckmarks": [
+    "Studio-quality sound",
+    "Fast generation",
+    "Downloadable file"
+  ],
+  "howItWorksSection": {
+    "ctaButtonText": "Create your song",
+    "headline": "Three steps to an unforgettable moment",
+    "label": "Simple",
+    "steps": [
+      {
+        "desc": "3 minutes to fill in the form",
+        "icon": "✍️",
+        "title": "Tell us the story"
+      },
+      {
+        "desc": "The lyrics and music are created by AI",
+        "icon": "🎵",
+        "title": "We create the song"
+      },
+      {
+        "desc": "In less than 24 hours",
+        "icon": "📧",
+        "title": "Delivered to your inbox"
+      }
+    ]
+  },
+  "landing": {
+    "audioSamples": {
+      "nowPlaying": {
+        "audioUrl": "/audio/en/sample-emily.mp3",
+        "metaText": "Pop ballad",
+        "name": "For Emily — my love",
+        "quote": "Every evening since that awkward first date…",
+        "thumbnailUrl": null,
+        "time": "3:18"
+      },
+      "playlist": [
+        {
+          "audioUrl": "/audio/en/sample-james.mp3",
+          "ctaLabel": "LISTEN",
+          "subtitle": "Acoustic • 2:43",
+          "thumbnailUrl": null,
+          "title": "For James — 10 years together"
+        },
+        {
+          "audioUrl": "/audio/en/sample-mom.mp3",
+          "ctaLabel": "LISTEN",
+          "subtitle": "Pop • 2:24",
+          "thumbnailUrl": null,
+          "title": "For Mom — happy 60th"
+        }
+      ]
+    },
+    "footerCta": {
+      "headline": "Give a gift they'll remember forever",
+      "subtitle": "Thousands of people have already seen the heartfelt gratitude in the eyes of those who received this kind of gift. Your turn."
+    },
+    "heroHeadline": {
+      "line1": "She pressed play —",
+      "line2": "and was moved by the very first line"
+    },
+    "heroOverlay": {
+      "authorLocation": "Chicago",
+      "authorName": "Jessica",
+      "quote": "I didn't make it to the end of the chorus…"
+    },
+    "heroPlayer": {
+      "authorName": "Alex",
+      "authorSubline": "NYC • 2026",
+      "cornerBadgeText": "Special offer",
+      "playingBadgeText": "Now playing",
+      "quote": "I tried to hold back. I couldn't.",
+      "verifiedBadgeText": "Verified order"
+    },
+    "heroSubtext": "A personalized song built around your loved one's story and name. The lyrics and music are created by AI and delivered right away, not a day later."
+  },
+  "miscText": {
+    "ctaButtonText": "Create your song",
+    "heroChipsHeadline": "Who is the song for?",
+    "heroCtaButtonText": "Create your song",
+    "heroStarLine": "★★★★★ 12,400+ songs",
+    "heroTagline": "",
+    "mobileCtaQuotaBadge": ""
+  },
+  "promoBanner": {
+    "countdownLabel": "🎵 Special offer",
+    "promoBadgeText": "🎁 New customer discount"
+  },
+  "reviews": {
+    "items": [
+      {
+        "authorName": "Andy • Telegram",
+        "imageUrl": "/images/review-en-telegram-andy.jpg",
+        "style": "image"
+      },
+      {
+        "authorName": "Lauren • WhatsApp",
+        "imageUrl": "/images/review-en-whatsapp-lauren.jpg",
+        "style": "image"
+      },
+      {
+        "authorName": "Beatrice • iMessage",
+        "imageUrl": "/images/review-en-imessage-beatrice.jpg",
+        "style": "image"
+      }
+    ],
+    "sectionHeadline": "What our customers say",
+    "sectionLabel": "Recipients' reactions",
+    "sectionSubtext": "2,847+ happy customers"
+  },
+  "statsBar": {
+    "items": [
+      {
+        "label": "of recipients were moved",
+        "val": "96%"
+      },
+      {
+        "label": "songs created",
+        "val": "12,400+"
+      },
+      {
+        "label": "from order to song",
+        "val": "10–30 min"
+      },
+      {
+        "label": "average rating",
+        "val": "4.9 ★"
+      }
+    ]
+  },
+  "trustBadges": {
+    "badge1": "★★★★★ 12,400+ songs",
+    "badge2": "10–30 minutes",
+    "badge3": "100% refund"
+  },
+  "activityToast": {
+    "items": [
+      {
+        "fullName": "Michael T.",
+        "city": "Chicago",
+        "recipientName": "Ashley"
+      },
+      {
+        "fullName": "Sarah L.",
+        "city": "London",
+        "recipientName": "Dad"
+      },
+      {
+        "fullName": "Daniel K.",
+        "city": "Toronto",
+        "recipientName": "Grandma"
+      }
+    ]
+  }
+}

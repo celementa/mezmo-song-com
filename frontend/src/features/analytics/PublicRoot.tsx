@@ -6,6 +6,9 @@ import { cachedSettingsGet } from '@/lib/settingsCache'
 import { isLocalhost } from '@/lib/isLocalhost'
 import { captureAttribution } from '@/lib/attribution'
 import type { Loose } from '@/lib/loose'
+import { langFromPath, rememberLang } from '@/lib/lang'
+import { effectiveConsent, useConsentChoice } from '@/lib/consent'
+import { CookieBanner } from '@/components/CookieBanner'
 import { MaintenancePage } from '@/routes/MaintenancePage'
 
 type MaintenanceData = {
@@ -30,6 +33,18 @@ function getInlinedMaintenance(): MaintenanceData | null {
   }
 }
 
+// Тексты совпадают со статическими в index.html (русская версия).
+const PAGE_META = {
+  ru: {
+    title: 'Песня на заказ - подарок, который не забудут',
+    description: 'Превратите вашу историю в музыку. Наш сервис создаст идеальный подарок на день рождения, свадьбу или юбилей. Быстро, уникально, навсегда.',
+  },
+  en: {
+    title: 'A custom song - the gift they will never forget',
+    description: 'Turn your story into music. A personalized song for a birthday, wedding or anniversary. Fast, unique and yours forever.',
+  },
+}
+
 export function PublicRoot() {
   const location = useLocation()
   const isOrderRoute = location.pathname.startsWith('/order/')
@@ -52,6 +67,17 @@ export function PublicRoot() {
   useEffect(() => {
     captureAttribution()
   }, [])
+
+  // Язык страницы: атрибут lang, заголовок вкладки и описание для превью ссылок.
+  // Запоминаем его, чтобы повторный заход на / открыл ту же версию (index.html).
+  const lang = langFromPath(location.pathname)
+  useEffect(() => {
+    rememberLang(lang)
+    document.documentElement.lang = lang
+    const meta = PAGE_META[lang]
+    document.title = meta.title
+    document.querySelector('meta[name="description"]')?.setAttribute('content', meta.description)
+  }, [lang])
 
   useEffect(() => {
     // На localhost не подключаем пиксели и head-скрипты — чтобы тесты не слали события.
@@ -85,6 +111,9 @@ export function PublicRoot() {
       .catch(() => {})
   }, [])
 
+  // Пиксели вне GTM ставят рекламные cookie — только с согласия (src/lib/consent.ts).
+  const adsAllowed = effectiveConsent(useConsentChoice()).ads
+
   if (!isOrderRoute && maintenance.enabled) {
     return (
       <MaintenancePage
@@ -99,9 +128,10 @@ export function PublicRoot() {
 
   return (
     <>
-      {pixelId && <MetaPixel pixelId={pixelId} />}
-      {tiktokPixelId && <TikTokPixel pixelId={tiktokPixelId} />}
+      {adsAllowed && pixelId && <MetaPixel pixelId={pixelId} />}
+      {adsAllowed && tiktokPixelId && <TikTokPixel pixelId={tiktokPixelId} />}
       <Outlet />
+      <CookieBanner />
     </>
   )
 }

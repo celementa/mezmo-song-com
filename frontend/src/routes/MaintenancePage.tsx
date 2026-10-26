@@ -1,4 +1,5 @@
 import { Instagram, Mail } from 'lucide-react'
+import { useTr } from '@/lib/lang'
 
 interface Props {
   headline?: string | null
@@ -9,8 +10,9 @@ interface Props {
 }
 
 export function MaintenancePage({ headline, message, email, instagramUrl, followText }: Props) {
-  const h = headline?.trim() || 'Скоро вернёмся'
-  const m = message?.trim() || 'Сайт временно недоступен. Загляните позже или напишите на почту поддержки.'
+  const tr = useTr()
+  const h = headline?.trim() || tr('Скоро вернёмся', 'We\'ll be right back')
+  const m = message?.trim() || tr('Сайт временно недоступен. Загляните позже или напишите на почту поддержки.', 'The site is temporarily unavailable. Please check back later or write to support.')
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-white to-gray-50 px-4 py-12">
@@ -33,7 +35,7 @@ export function MaintenancePage({ headline, message, email, instagramUrl, follow
             {instagramUrl && (
               <div className="pt-2">
                 <p className="text-sm text-gray-500 mb-3">
-                  {followText?.trim() || 'Следите за обновлениями'}
+                  {followText?.trim() || tr('Следите за обновлениями', 'Follow us for updates')}
                 </p>
                 <a
                   href={instagramUrl}

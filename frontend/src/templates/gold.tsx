@@ -5,12 +5,16 @@ import type { Loose } from '@/lib/loose'
 import { SeekBar } from '@/components/landing/SeekBar'
 import { PaymentLogos } from '@/components/landing/PaymentLogos'
 import { CurrencySwitch } from '@/components/CurrencySwitch'
+import { LangSwitch } from '@/components/LangSwitch'
+import { localePath, useLang, useTr } from '@/lib/lang'
 import { COMPANY, LEGAL_LINKS } from '@/lib/site'
+import { openCookieSettings } from '@/lib/consent'
 import type { LandingData } from '@/hooks/useLandingData'
 import type { TemplateDef } from './types'
 
 // Hero audio player bar
 function GoldHeroPlayer({ track }: { track?: { audioUrl?: string | null; title?: string; time?: string } | null }) {
+  const tr = useTr()
   const [playing, setPlaying] = useState(false)
   const [posSec, setPosSec] = useState(0)
   const [durSec, setDurSec] = useState<number | null>(null)
@@ -58,7 +62,7 @@ function GoldHeroPlayer({ track }: { track?: { audioUrl?: string | null; title?:
             disabled={!hasAudio}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-black font-bold hover:opacity-80 active:scale-95 transition-all disabled:opacity-40"
             style={{ background: '#F2C572' }}
-            aria-label={playing ? 'Пауза' : 'Воспроизвести'}
+            aria-label={playing ? tr('Пауза', 'Pause') : tr('Воспроизвести', 'Play')}
           >
             {playing ? (
               <Pause className="h-4 w-4" fill="currentColor" />
@@ -68,7 +72,7 @@ function GoldHeroPlayer({ track }: { track?: { audioUrl?: string | null; title?:
           </button>
           <div className="min-w-0">
             <div className="text-white font-bold text-sm truncate">
-              {track?.title ?? 'Пример песни'}
+              {track?.title ?? tr('Пример песни', 'Sample song')}
             </div>
           </div>
         </div>
@@ -120,6 +124,7 @@ function GoldExampleTrack({ track, active, onToggle }: {
   active: boolean
   onToggle: () => void
 }) {
+  const tr = useTr()
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [progress, setProgress] = useState(0)
   useEffect(() => {
@@ -136,7 +141,7 @@ function GoldExampleTrack({ track, active, onToggle }: {
         disabled={!track.audioUrl}
         className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 hover:opacity-80 transition disabled:opacity-40"
         style={{ background: active ? '#F2C572' : '#F1E7D6', color: '#8a6621' }}
-        aria-label={active ? 'Пауза' : 'Слушать пример'}
+        aria-label={active ? tr('Пауза', 'Pause') : tr('Слушать пример', 'Play sample')}
       >
         {active ? (
           <Pause className="h-3.5 w-3.5" fill="currentColor" />
@@ -243,6 +248,8 @@ function GoldReactionVideo({ className = '' }: { className?: string }) {
 }
 
 function GoldRender(data: LandingData) {
+  const tr = useTr()
+  const lang = useLang()
   const {
     fmtCurrency,
     paymentAmount,
@@ -262,13 +269,18 @@ function GoldRender(data: LandingData) {
   // Без параметра плечо назначает серверная ротация.
   const { search } = useLocation()
   const arm = new URLSearchParams(search).get('arm')
-  const configHref = arm ? `/config?arm=${encodeURIComponent(arm)}` : '/config'
+  // Скриншоты переписок: для EN свои (Telegram, WhatsApp, iMessage, письмо)
+  const reviewShots = lang === 'en'
+    ? ['/images/review-en-telegram-andy.jpg', '/images/review-en-whatsapp-lauren.jpg', '/images/review-en-imessage-beatrice.jpg', '/images/review-en-email-alice.jpg']
+    : ['/images/review-telegram-galya.png', '/images/review-whatsapp-proposal.png', '/images/review-max-olga.png', '/images/review-order-process.png']
+
+  const configHref = localePath(arm ? `/config?arm=${encodeURIComponent(arm)}` : '/config')
 
   // Extract hero player data from sections if available
   const heroPlayerAudioUrl =
     (sections as Loose)?.heroPlayer?.audioUrl || hero.player.audioUrl || allTracks[0]?.audioUrl || null
-  const heroPlayerTitle = (sections as Loose)?.heroPlayer?.title || 'Пример песни'
-  const heroPlayerTime = (sections as Loose)?.heroPlayer?.time || '3:24'
+  const heroPlayerTitle = (sections as Loose)?.heroPlayer?.title || tr('Пример песни', 'Sample song')
+  const heroPlayerTime = (sections as Loose)?.heroPlayer?.time || tr('3:24', '3:20')
 
   // На мобилке в hero оставляем только первую фразу подзаголовка — остальное съедает
   // экран до видео/плеера (фидбек Aug 2026). Берём её из тех же данных, а не дублируем текст.
@@ -284,19 +296,21 @@ function GoldRender(data: LandingData) {
       >
         <img src="/images/logo-mezmo.png" alt="Mezmo" className="h-5 md:h-6 w-auto" />
         <nav className="hidden md:flex gap-7 text-sm font-medium" style={{ color: '#151210' }}>
-          <a href="#how" className="hover:opacity-70 transition">Как это работает</a>
-          <a href="#reactions" className="hover:opacity-70 transition">Реакции</a>
-          <a href="#reviews" className="hover:opacity-70 transition">Отзывы</a>
-          <a href="#faq" className="hover:opacity-70 transition">Гарантия</a>
+          <a href="#how" className="hover:opacity-70 transition">{tr('Как это работает', 'How it works')}</a>
+          <a href="#reactions" className="hover:opacity-70 transition">{tr('Реакции', 'Reactions')}</a>
+          <a href="#reviews" className="hover:opacity-70 transition">{tr('Отзывы', 'Reviews')}</a>
+          <a href="#faq" className="hover:opacity-70 transition">{tr('Гарантия', 'Guarantee')}</a>
         </nav>
         <div className="flex items-center gap-3 md:gap-5">
+          <LangSwitch />
           <CurrencySwitch />
           <Link
             to={configHref}
             className="px-5 py-2.5 rounded-full text-white font-bold text-sm transition-all hover:opacity-90"
             style={{ background: '#151210' }}
           >
-            Создать песню
+            <span className="md:hidden">{tr('Создать', 'Create')}</span>
+            <span className="hidden md:inline">{tr('Создать песню', 'Create a song')}</span>
           </Link>
         </div>
       </header>
@@ -309,7 +323,7 @@ function GoldRender(data: LandingData) {
             и геометрически не может лечь на лицо; на sm-md фото во всю ширину */}
         <img
           src="/images/hero-gold.jpg"
-          alt="Девушка слушает свою песню в наушниках"
+          alt={tr('Девушка слушает свою песню в наушниках', 'A woman listening to her song on headphones')}
           className="hidden sm:block absolute inset-y-0 right-0 h-full w-full lg:w-[60%] object-cover"
           style={{ objectPosition: '70% 50%' }}
         />
@@ -355,7 +369,7 @@ function GoldRender(data: LandingData) {
                 animation: 'pulse 1.4s infinite',
               }}
             />
-            Мария из Казани только что заказала песню
+            {tr('Мария из Казани только что заказала песню', 'Maria from Kazan just ordered a song')}
           </div>
 
           {/* Price badge */}
@@ -366,7 +380,7 @@ function GoldRender(data: LandingData) {
               color: '#2b1a05',
             }}
           >
-            {fmtCurrency(paymentAmount)} вместо {fmtCurrency(originalAmount)}
+            {fmtCurrency(paymentAmount)} {tr('вместо', 'instead of')} {fmtCurrency(originalAmount)}
           </div>
         </div>
 
@@ -382,7 +396,7 @@ function GoldRender(data: LandingData) {
               letterSpacing: '0.5px',
             }}
           >
-            ★★★★★ 12 400+ песен создано
+            {tr('★★★★★ 12 400+ песен создано', '★★★★★ 12,400+ songs created')}
           </div>
 
           {/* Headline */}
@@ -414,7 +428,7 @@ function GoldRender(data: LandingData) {
                 boxShadow: '0 8px 22px rgba(185,133,46,.45)',
               }}
             >
-              Создать песню →
+              {tr('Создать песню →', 'Create a song →')}
             </Link>
             {/* Цена услуги должна быть видна на сайте до оплаты (требование
                 UnitPay), а бейдж цены в hero на мобилке скрыт. */}
@@ -456,7 +470,7 @@ function GoldRender(data: LandingData) {
               96%
             </div>
             <div className="text-xs font-semibold mt-2" style={{ color: '#6b6558' }}>
-              получателей растрогались
+              {tr('получателей растрогались', 'of recipients were moved')}
             </div>
           </div>
 
@@ -470,7 +484,7 @@ function GoldRender(data: LandingData) {
               12 400+
             </div>
             <div className="text-xs font-semibold mt-2" style={{ color: '#6b6558' }}>
-              песен создано
+              {tr('песен создано', 'songs created')}
             </div>
           </div>
 
@@ -481,10 +495,10 @@ function GoldRender(data: LandingData) {
             }}
           >
             <div className="text-3xl font-bold" style={{ color: '#151210', fontFamily: "'Prata', serif" }}>
-              10 мин
+              {tr('10 мин', '10 min')}
             </div>
             <div className="text-xs font-semibold mt-2" style={{ color: '#6b6558' }}>
-              от заказа до доставки
+              {tr('от заказа до доставки', 'from order to delivery')}
             </div>
           </div>
 
@@ -498,7 +512,7 @@ function GoldRender(data: LandingData) {
               4.9★
             </div>
             <div className="text-xs font-semibold mt-2" style={{ color: '#6b6558' }}>
-              отзывов в Яндекс
+              {tr('отзывов в Яндекс', 'reviews on Yandex')}
             </div>
           </div>
         </div>
@@ -514,16 +528,16 @@ function GoldRender(data: LandingData) {
               color: '#8a6621',
             }}
           >
-            послушайте сами
+            {tr('послушайте сами', 'hear it for yourself')}
           </div>
           <h2
             className="text-3xl md:text-4xl font-bold mb-3"
             style={{ fontFamily: "'Prata', serif", color: '#151210' }}
           >
-            Примеры готовых треков
+            {tr('Примеры готовых треков', 'Sample songs')}
           </h2>
           <p className="text-base max-w-2xl mx-auto" style={{ color: '#6b6558' }}>
-            Чтобы сразу было понятно, что вы получите — до того, как читать, как это работает
+            {tr('Чтобы сразу было понятно, что вы получите — до того, как читать, как это работает', 'So you know exactly what you\'ll get, before you read how it works')}
           </p>
         </div>
 
@@ -549,16 +563,16 @@ function GoldRender(data: LandingData) {
               color: '#8a6621',
             }}
           >
-            не поверите на слово
+            {tr('не поверите на слово', 'don\'t just take our word for it')}
           </div>
           <h2
             className="text-3xl md:text-4xl font-bold mb-3"
             style={{ fontFamily: "'Prata', serif", color: '#151210' }}
           >
-            Настоящие реакции, не описания
+            {tr('Настоящие реакции, не описания', 'Real reactions, not descriptions')}
           </h2>
           <p className="text-base max-w-2xl mx-auto" style={{ color: '#6b6558' }}>
-            Вместо абзаца о том, «какие мы эмоциональные» — вот что происходит, когда включают запись
+            {tr('Вместо абзаца о том, «какие мы эмоциональные» — вот что происходит, когда включают запись', 'Instead of a paragraph about how emotional we are, here\'s what happens when the song starts playing')}
           </p>
         </div>
 
@@ -568,7 +582,7 @@ function GoldRender(data: LandingData) {
             <div className="relative" style={{ aspectRatio: '1 / 1', background: '#f0f0f0' }}>
               <img
                 src="/images/bubble-mom-crying.jpg"
-                alt="мама плачет от радости"
+                alt={tr('мама плачет от радости', 'mom crying happy tears')}
                 className="w-full h-full object-cover"
               />
               <div
@@ -578,7 +592,7 @@ function GoldRender(data: LandingData) {
                   color: '#F2C572',
                 }}
               >
-                🥹 растрогалась
+                {tr('🥹 растрогалась', '🥹 moved to tears')}
               </div>
             </div>
             <div className="p-4">
@@ -589,10 +603,10 @@ function GoldRender(data: LandingData) {
                   color: '#151210',
                 }}
               >
-                Мама растрогалась, пока слушала. Сказала, это лучший подарок за всю жизнь 💛
+                {tr('Мама растрогалась, пока слушала. Сказала, это лучший подарок за всю жизнь 💛', 'Mom teared up while listening. She said it\'s the best gift she\'s ever received 💛')}
               </div>
               <div className="text-xs" style={{ color: '#6b6558' }}>
-                Елена М. · для мамы
+                {tr('Елена М. · для мамы', 'Helen M. · for mom')}
               </div>
             </div>
           </div>
@@ -602,7 +616,7 @@ function GoldRender(data: LandingData) {
             <div className="relative" style={{ aspectRatio: '1 / 1', background: '#f0f0f0' }}>
               <img
                 src="/images/bubble-proposal.jpg"
-                alt="пара обнимается, предложение"
+                alt={tr('пара обнимается, предложение', 'couple hugging, a proposal')}
                 className="w-full h-full object-cover"
               />
               <div
@@ -612,7 +626,7 @@ function GoldRender(data: LandingData) {
                   color: '#F2C572',
                 }}
               >
-                💍 сказала «да»
+                {tr('💍 сказала «да»', '💍 said “yes”')}
               </div>
             </div>
             <div className="p-4">
@@ -623,10 +637,10 @@ function GoldRender(data: LandingData) {
                   color: '#151210',
                 }}
               >
-                Сделал предложение под эту песню. Она обняла меня ещё на первом куплете
+                {tr('Сделал предложение под эту песню. Она обняла меня ещё на первом куплете', 'I proposed with this song playing. She hugged me before the first verse was over')}
               </div>
               <div className="text-xs" style={{ color: '#6b6558' }}>
-                Дмитрий Р. · предложение
+                {tr('Дмитрий Р. · предложение', 'Dan R. · a proposal')}
               </div>
             </div>
           </div>
@@ -636,7 +650,7 @@ function GoldRender(data: LandingData) {
             <div className="relative" style={{ aspectRatio: '1 / 1', background: '#f0f0f0' }}>
               <img
                 src="/images/bubble-grandma.jpg"
-                alt="бабушка с внучкой"
+                alt={tr('бабушка с внучкой', 'grandma with her granddaughter')}
                 className="w-full h-full object-cover"
               />
               <div
@@ -646,7 +660,7 @@ function GoldRender(data: LandingData) {
                   color: '#F2C572',
                 }}
               >
-                👵 попросила ещё раз
+                {tr('👵 попросила ещё раз', '👵 asked for it again')}
               </div>
             </div>
             <div className="p-4">
@@ -657,10 +671,10 @@ function GoldRender(data: LandingData) {
                   color: '#151210',
                 }}
               >
-                Бабушка попросила поставить ещё раз. И ещё раз. Слушаем всей семьёй уже неделю
+                {tr('Бабушка попросила поставить ещё раз. И ещё раз. Слушаем всей семьёй уже неделю', 'Grandma asked to play it again. And again. We\'ve been listening as a family all week')}
               </div>
               <div className="text-xs" style={{ color: '#6b6558' }}>
-                Мария К. · для бабушки
+                {tr('Мария К. · для бабушки', 'Mary K. · for grandma')}
               </div>
             </div>
           </div>
@@ -670,7 +684,7 @@ function GoldRender(data: LandingData) {
             <div className="relative" style={{ aspectRatio: '1 / 1', background: '#f0f0f0' }}>
               <img
                 src="/images/bubble-dad.jpg"
-                alt="папа обнимает дочь"
+                alt={tr('папа обнимает дочь', 'dad hugging his daughter')}
                 className="w-full h-full object-cover"
               />
               <div
@@ -680,7 +694,7 @@ function GoldRender(data: LandingData) {
                   color: '#F2C572',
                 }}
               >
-                🥹 отец растрогался
+                {tr('🥹 отец растрогался', '🥹 dad got emotional')}
               </div>
             </div>
             <div className="p-4">
@@ -691,10 +705,10 @@ function GoldRender(data: LandingData) {
                   color: '#151210',
                 }}
               >
-                Папа обычно сдержанный, а тут отвернулся и вытер глаза. Никогда его таким не видела
+                {tr('Папа обычно сдержанный, а тут отвернулся и вытер глаза. Никогда его таким не видела', 'Dad is usually reserved, but this time he turned away and wiped his eyes. I\'ve never seen him like that')}
               </div>
               <div className="text-xs" style={{ color: '#6b6558' }}>
-                Ольга С. · для папы
+                {tr('Ольга С. · для папы', 'Olga S. · for dad')}
               </div>
             </div>
           </div>
@@ -715,16 +729,16 @@ function GoldRender(data: LandingData) {
               color: '#F2C572',
             }}
           >
-            смотрите вживую
+            {tr('смотрите вживую', 'watch it live')}
           </div>
           <h2
             className="text-3xl md:text-4xl font-bold mb-3 text-white"
             style={{ fontFamily: "'Prata', serif" }}
           >
-            Ради этого момента всё и делается
+            {tr('Ради этого момента всё и делается', 'This moment is what it\'s all about')}
           </h2>
           <p className="text-base max-w-2xl mx-auto" style={{ color: '#d9cabb' }}>
-            Так выглядит, когда песня попадает прямо в сердце
+            {tr('Так выглядит, когда песня попадает прямо в сердце', 'This is what it looks like when a song hits the heart')}
           </p>
         </div>
 
@@ -744,16 +758,16 @@ function GoldRender(data: LandingData) {
               color: '#8a6621',
             }}
           >
-            как это работает
+            {tr('как это работает', 'how it works')}
           </div>
           <h2
             className="text-3xl md:text-4xl font-bold mb-3"
             style={{ fontFamily: "'Prata', serif", color: '#151210' }}
           >
-            От истории до слёз — 4 простых шага
+            {tr('От истории до слёз — 4 простых шага', 'From story to tears in 4 simple steps')}
           </h2>
           <p className="text-base max-w-2xl mx-auto" style={{ color: '#6b6558' }}>
-            Никаких скрытых условий и подписок — заплатили один раз, получили свою песню сразу
+            {tr('Никаких скрытых условий и подписок — заплатили один раз, получили свою песню сразу', 'No hidden terms or subscriptions. Pay once and get your song right away')}
           </p>
         </div>
 
@@ -770,10 +784,10 @@ function GoldRender(data: LandingData) {
               1
             </div>
             <h3 className="text-xl font-bold mb-2" style={{ color: '#151210', fontFamily: "'Prata', serif" }}>
-              Расскажите, для кого песня
+              {tr('Расскажите, для кого песня', 'Tell us who the song is for')}
             </h3>
             <p className="text-sm" style={{ color: '#6b6558' }}>
-              Выберите получателя и введите имя. 3 минуты, есть подсказки, если не знаете с чего начать.
+              {tr('Выберите получателя и введите имя. 3 минуты, есть подсказки, если не знаете с чего начать.', 'Choose the recipient and enter their name. It takes 3 minutes, with prompts if you\'re not sure where to start.')}
             </p>
           </div>
           <div className="flex-1 order-2 md:order-2 w-full md:w-auto">
@@ -791,15 +805,15 @@ function GoldRender(data: LandingData) {
               </div>
               <div className="p-5 text-sm">
                 <div className="font-bold mb-3 text-xs uppercase" style={{ color: '#6b6558' }}>
-                  Кому дарим?
+                  {tr('Кому дарим?', 'Who is it for?')}
                 </div>
                 <div className="flex flex-wrap gap-2 mb-3">
-                  <button className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: '#f0ddc9', color: '#151210' }}>Муж</button>
-                  <button className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: '#F2C572', color: '#151210' }}>Жена</button>
-                  <button className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: '#f0ddc9', color: '#151210' }}>Мама</button>
-                  <button className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: '#f0ddc9', color: '#151210' }}>Друг</button>
+                  <button className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: '#f0ddc9', color: '#151210' }}>{tr('Муж', 'Husband')}</button>
+                  <button className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: '#F2C572', color: '#151210' }}>{tr('Жена', 'Wife')}</button>
+                  <button className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: '#f0ddc9', color: '#151210' }}>{tr('Мама', 'Mom')}</button>
+                  <button className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: '#f0ddc9', color: '#151210' }}>{tr('Друг', 'Friend')}</button>
                 </div>
-                <div className="rounded p-2 text-xs" style={{ background: '#f9f4ed', color: '#999' }}>напр. Анна</div>
+                <div className="rounded p-2 text-xs" style={{ background: '#f9f4ed', color: '#999' }}>{tr('напр. Анна', 'e.g. Anna')}</div>
               </div>
             </div>
           </div>
@@ -818,10 +832,10 @@ function GoldRender(data: LandingData) {
               2
             </div>
             <h3 className="text-xl font-bold mb-2" style={{ color: '#151210', fontFamily: "'Prata', serif" }}>
-              Выберите стиль и звук
+              {tr('Выберите стиль и звук', 'Choose a style and sound')}
             </h3>
             <p className="text-sm" style={{ color: '#6b6558' }}>
-              Поп-баллада, акустика, рок и другие жанры — с коротким аудио-превью прямо в списке.
+              {tr('Поп-баллада, акустика, рок и другие жанры — с коротким аудио-превью прямо в списке.', 'Pop ballad, acoustic, rock and more, with a short audio preview right in the list.')}
             </p>
           </div>
           <div className="flex-1 order-2 md:order-1 w-full md:w-auto">
@@ -846,7 +860,7 @@ function GoldRender(data: LandingData) {
                   }}
                 >
                   <span>▶</span>
-                  <span className="font-bold text-xs">Поп-баллада</span>
+                  <span className="font-bold text-xs">{tr('Поп-баллада', 'Pop ballad')}</span>
                 </div>
                 <div
                   className="flex items-center gap-2 p-2 rounded"
@@ -856,7 +870,7 @@ function GoldRender(data: LandingData) {
                   }}
                 >
                   <span>▶</span>
-                  <span className="font-bold text-xs">Акустика</span>
+                  <span className="font-bold text-xs">{tr('Акустика', 'Acoustic')}</span>
                 </div>
                 <div
                   className="flex items-center gap-2 p-2 rounded"
@@ -866,7 +880,7 @@ function GoldRender(data: LandingData) {
                   }}
                 >
                   <span>▶</span>
-                  <span className="font-bold text-xs">Рок</span>
+                  <span className="font-bold text-xs">{tr('Рок', 'Rock')}</span>
                 </div>
               </div>
             </div>
@@ -886,10 +900,10 @@ function GoldRender(data: LandingData) {
               3
             </div>
             <h3 className="text-xl font-bold mb-2" style={{ color: '#151210', fontFamily: "'Prata', serif" }}>
-              ИИ пишет текст и музыку
+              {tr('ИИ пишет текст и музыку', 'AI writes the lyrics and music')}
             </h3>
             <p className="text-sm" style={{ color: '#6b6558' }}>
-              Опишите историю свободно или ответьте на 3 коротких вопроса в быстром режиме — текст и мелодия создаются под вашу историю, не по шаблону.
+              {tr('Опишите историю свободно или ответьте на 3 коротких вопроса в быстром режиме — текст и мелодия создаются под вашу историю, не по шаблону.', 'Describe the story in your own words or answer 3 quick questions in fast mode. The lyrics and melody are created for your story, not from a template.')}
             </p>
           </div>
           <div className="flex-1 order-2 md:order-2 w-full md:w-auto">
@@ -907,10 +921,10 @@ function GoldRender(data: LandingData) {
               </div>
               <div className="p-5">
                 <div className="font-bold mb-3 text-xs uppercase" style={{ color: '#6b6558' }}>
-                  Расскажите историю
+                  {tr('Расскажите историю', 'Tell the story')}
                 </div>
                 <div className="rounded p-2 text-xs" style={{ background: '#f9f4ed', color: '#999' }}>
-                  Мы познакомились 10 лет назад в университете...
+                  {tr('Мы познакомились 10 лет назад в университете...', 'We met 10 years ago at university...')}
                 </div>
               </div>
             </div>
@@ -930,10 +944,10 @@ function GoldRender(data: LandingData) {
               4
             </div>
             <h3 className="text-xl font-bold mb-2" style={{ color: '#151210', fontFamily: "'Prata', serif" }}>
-              Готовая песня — сразу
+              {tr('Готовая песня — сразу', 'Your song, right away')}
             </h3>
             <p className="text-sm" style={{ color: '#6b6558' }}>
-              10–30 минут, без ожидания суток. Слушаете черновик, просите бесплатную правку, скачиваете финал и дарите.
+              {tr('10–30 минут, без ожидания суток. Слушаете черновик, просите бесплатную правку, скачиваете финал и дарите.', '10–30 minutes, no waiting a day. Listen to the draft, ask for a free revision, download the final version and give it away.')}
             </p>
           </div>
           <div className="flex-1 order-2 md:order-1 w-full md:w-auto">
@@ -957,7 +971,7 @@ function GoldRender(data: LandingData) {
                   >
                     ▶
                   </button>
-                  <div className="text-xs font-bold" style={{ color: '#151210' }}>Для Анны — готово</div>
+                  <div className="text-xs font-bold" style={{ color: '#151210' }}>{tr('Для Анны — готово', 'For Anna — ready')}</div>
                 </div>
                 <div className="rounded overflow-hidden" style={{ background: '#f9f4ed', height: '4px' }}>
                   <div style={{ background: '#F2C572', width: '45%', height: '100%' }} />
@@ -978,13 +992,13 @@ function GoldRender(data: LandingData) {
               color: '#8a6621',
             }}
           >
-            для кого песня?
+            {tr('для кого песня?', 'who is it for?')}
           </div>
           <h2
             className="text-3xl md:text-4xl font-bold mb-3"
             style={{ fontFamily: "'Prata', serif", color: '#151210' }}
           >
-            На любой повод
+            {tr('На любой повод', 'For any occasion')}
           </h2>
         </div>
 
@@ -993,7 +1007,7 @@ function GoldRender(data: LandingData) {
           <div className="relative rounded-2xl overflow-hidden group">
             <img
               src="/images/occasion-spouse.jpg"
-              alt="жене или мужу"
+              alt={tr('жене или мужу', 'for a wife or husband')}
               className="w-full aspect-square object-cover"
             />
             <div
@@ -1003,7 +1017,7 @@ function GoldRender(data: LandingData) {
               }}
             />
             <div className="absolute bottom-3 left-3 right-3 text-white font-bold text-sm">
-              Жене / мужу
+              {tr('Жене / мужу', 'Wife / husband')}
             </div>
           </div>
 
@@ -1011,7 +1025,7 @@ function GoldRender(data: LandingData) {
           <div className="relative rounded-2xl overflow-hidden group">
             <img
               src="/images/occasion-partner.jpg"
-              alt="любимой девушке или парню"
+              alt={tr('любимой девушке или парню', 'for a girlfriend or boyfriend')}
               className="w-full aspect-square object-cover"
             />
             <div
@@ -1021,7 +1035,7 @@ function GoldRender(data: LandingData) {
               }}
             />
             <div className="absolute bottom-3 left-3 right-3 text-white font-bold text-sm">
-              Любимой девушке / парню
+              {tr('Любимой девушке / парню', 'Girlfriend / boyfriend')}
             </div>
           </div>
 
@@ -1029,7 +1043,7 @@ function GoldRender(data: LandingData) {
           <div className="relative rounded-2xl overflow-hidden group">
             <img
               src="/images/occasion-friends.jpg"
-              alt="другу или подруге"
+              alt={tr('другу или подруге', 'for a friend')}
               className="w-full aspect-square object-cover"
             />
             <div
@@ -1039,7 +1053,7 @@ function GoldRender(data: LandingData) {
               }}
             />
             <div className="absolute bottom-3 left-3 right-3 text-white font-bold text-sm">
-              Другу / подруге
+              {tr('Другу / подруге', 'Friend')}
             </div>
           </div>
 
@@ -1047,7 +1061,7 @@ function GoldRender(data: LandingData) {
           <div className="relative rounded-2xl overflow-hidden group">
             <img
               src="/images/occasion-parents.jpg"
-              alt="родителям"
+              alt={tr('родителям', 'for parents')}
               className="w-full aspect-square object-cover"
             />
             <div
@@ -1057,7 +1071,7 @@ function GoldRender(data: LandingData) {
               }}
             />
             <div className="absolute bottom-3 left-3 right-3 text-white font-bold text-sm">
-              Родителям
+              {tr('Родителям', 'Parents')}
             </div>
           </div>
         </div>
@@ -1073,13 +1087,13 @@ function GoldRender(data: LandingData) {
               color: '#8a6621',
             }}
           >
-            говорят наши клиенты
+            {tr('говорят наши клиенты', 'what our customers say')}
           </div>
           <h2
             className="text-3xl md:text-4xl font-bold mb-3"
             style={{ fontFamily: "'Prata', serif", color: '#151210' }}
           >
-            2 847+ довольных клиентов
+            {tr('2 847+ довольных клиентов', '2,847+ happy customers')}
           </h2>
         </div>
 
@@ -1087,8 +1101,8 @@ function GoldRender(data: LandingData) {
           {/* Review 1 - Telegram */}
           <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
             <img
-              src="/images/review-telegram-galya.png"
-              alt="Отзыв Галя, Telegram"
+              src={reviewShots[0]}
+              alt={tr('Отзыв Галя, Telegram', 'Telegram review: a surprise song for dad\'s birthday')}
               className="w-full h-auto"
             />
           </div>
@@ -1096,8 +1110,8 @@ function GoldRender(data: LandingData) {
           {/* Review 2 - WhatsApp */}
           <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
             <img
-              src="/images/review-whatsapp-proposal.png"
-              alt="Отзыв о предложении, WhatsApp"
+              src={reviewShots[1]}
+              alt={tr('Отзыв о предложении, WhatsApp', 'WhatsApp review: a song for mom\'s 60th birthday')}
               className="w-full h-auto"
             />
           </div>
@@ -1105,8 +1119,8 @@ function GoldRender(data: LandingData) {
           {/* Review 3 - MAX/Olga */}
           <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
             <img
-              src="/images/review-max-olga.png"
-              alt="Отзыв Максима и Ольги"
+              src={reviewShots[2]}
+              alt={tr('Отзыв Максима и Ольги', 'iMessage review: a song for a friend\'s wedding')}
               className="w-full h-auto"
             />
           </div>
@@ -1114,8 +1128,8 @@ function GoldRender(data: LandingData) {
           {/* Review 4 - про процесс заказа (широкий скриншот, во всю ширину сетки) */}
           <div className="bg-white rounded-2xl overflow-hidden shadow-lg md:col-span-3">
             <img
-              src="/images/review-order-process.png"
-              alt="Отзыв о процессе заказа"
+              src={reviewShots[3]}
+              alt={tr('Отзыв о процессе заказа', 'Review about the ordering process: “ordered in 5 minutes” for an anniversary')}
               className="w-full h-auto"
             />
           </div>
@@ -1132,13 +1146,13 @@ function GoldRender(data: LandingData) {
               color: '#8a6621',
             }}
           >
-            вопросы
+            {tr('вопросы', 'questions')}
           </div>
           <h2
             className="text-3xl md:text-4xl font-bold mb-3"
             style={{ fontFamily: "'Prata', serif", color: '#151210' }}
           >
-            Частые вопросы
+            {tr('Частые вопросы', 'Frequently asked questions')}
           </h2>
         </div>
 
@@ -1150,10 +1164,10 @@ function GoldRender(data: LandingData) {
             }}
           >
             <div className="font-bold text-sm" style={{ color: '#151210' }}>
-              Кто пишет текст песни?
+              {tr('Кто пишет текст песни?', 'Who writes the lyrics?')}
             </div>
             <div className="text-sm mt-2" style={{ color: '#6b6558' }}>
-              Текст и музыку от начала до конца создаёт ИИ — но это не обычный чат-бот или голосовой помощник, а модель, созданная для написания песен на основе вашей истории. Поэтому получается не набор случайных фраз, а текст, который звучит как настоящая песня. На всякий случай — у вас есть 2 бесплатные правки, чтобы довести песню до нужного звучания.
+              {tr('Текст и музыку от начала до конца создаёт ИИ — но это не обычный чат-бот или голосовой помощник, а модель, созданная для написания песен на основе вашей истории. Поэтому получается не набор случайных фраз, а текст, который звучит как настоящая песня. На всякий случай — у вас есть 2 бесплатные правки, чтобы довести песню до нужного звучания.', 'The lyrics and music are created from start to finish by AI, but it\'s not a regular chatbot or voice assistant. It\'s a model built specifically to write songs from your story, so you get lyrics that sound like a real song, not a random set of phrases. Just in case, you get 2 free revisions to get the song sounding just right.')}
             </div>
           </div>
 
@@ -1164,10 +1178,10 @@ function GoldRender(data: LandingData) {
             }}
           >
             <div className="font-bold text-sm" style={{ color: '#151210' }}>
-              Сколько времени занимает создание песни?
+              {tr('Сколько времени занимает создание песни?', 'How long does it take to create a song?')}
             </div>
             <div className="text-sm mt-2" style={{ color: '#6b6558' }}>
-              Обычно 10–30 минут. Если заказываете доработку — чуть дольше. Скорость зависит от очереди и сложности истории.
+              {tr('Обычно 10–30 минут. Если заказываете доработку — чуть дольше. Скорость зависит от очереди и сложности истории.', 'Usually 10–30 minutes. If you order a revision, it takes a little longer. Speed depends on the queue and how complex the story is.')}
             </div>
           </div>
 
@@ -1178,10 +1192,10 @@ function GoldRender(data: LandingData) {
             }}
           >
             <div className="font-bold text-sm" style={{ color: '#151210' }}>
-              У вас есть гарантии?
+              {tr('У вас есть гарантии?', 'Do you offer guarantees?')}
             </div>
             <div className="text-sm mt-2" style={{ color: '#6b6558' }}>
-              99% клиентов остаются довольны и возвращаются к нам снова. Если вам не понравился результат, то мы вернем 100%. Достаточно написать нам в чат.
+              {tr('99% клиентов остаются довольны и возвращаются к нам снова. Если вам не понравился результат, то мы вернем 100%. Достаточно написать нам в чат.', '99% of our customers are happy and come back to us again. If you don\'t like the result, we\'ll refund 100%. Just message us in the chat.')}
             </div>
           </div>
 
@@ -1192,10 +1206,10 @@ function GoldRender(data: LandingData) {
             }}
           >
             <div className="font-bold text-sm" style={{ color: '#151210' }}>
-              Какие жанры доступны?
+              {tr('Какие жанры доступны?', 'What genres are available?')}
             </div>
             <div className="text-sm mt-2" style={{ color: '#6b6558' }}>
-              Поп-баллада, рок, рэп, шансон и ещё десяток других. Также вы можете указать свой жанр и стиль музыки, если вашего варианта нет в списке.
+              {tr('Поп-баллада, рок, рэп, шансон и ещё десяток других. Также вы можете указать свой жанр и стиль музыки, если вашего варианта нет в списке.', 'Pop ballad, rock, rap, chanson and about ten more. You can also specify your own genre and musical style if it isn\'t on the list.')}
             </div>
           </div>
 
@@ -1206,10 +1220,10 @@ function GoldRender(data: LandingData) {
             }}
           >
             <div className="font-bold text-sm" style={{ color: '#151210' }}>
-              Можно ли что-то изменить, если текст не попал в точку?
+              {tr('Можно ли что-то изменить, если текст не попал в точку?', 'Can I change something if the lyrics miss the mark?')}
             </div>
             <div className="text-sm mt-2" style={{ color: '#6b6558' }}>
-              Да — на каждый заказ есть 2 бесплатные правки. Можно поменять строчки, вставить свой текст или попросить пересобрать куплет заново, пока не получится именно то, что нужно.
+              {tr('Да — на каждый заказ есть 2 бесплатные правки. Можно поменять строчки, вставить свой текст или попросить пересобрать куплет заново, пока не получится именно то, что нужно.', 'Yes. Every order includes 2 free revisions. You can change lines, add your own text, or ask us to rebuild a verse until it\'s exactly right.')}
             </div>
           </div>
 
@@ -1220,10 +1234,10 @@ function GoldRender(data: LandingData) {
             }}
           >
             <div className="font-bold text-sm" style={{ color: '#151210' }}>
-              Можно подарить на любой праздник?
+              {tr('Можно подарить на любой праздник?', 'Can I give it for any holiday?')}
             </div>
             <div className="text-sm mt-2" style={{ color: '#6b6558' }}>
-              Да. День рождения, годовщина, предложение руки и сердца, свадьба, рождение ребёнка, выпускной — подойдёт для любого повода. Ваша история останется в песне навсегда.
+              {tr('Да. День рождения, годовщина, предложение руки и сердца, свадьба, рождение ребёнка, выпускной — подойдёт для любого повода. Ваша история останется в песне навсегда.', 'Yes. Birthdays, anniversaries, marriage proposals, weddings, the birth of a child, graduations: it works for any occasion. Your story stays in the song forever.')}
             </div>
           </div>
 
@@ -1234,10 +1248,10 @@ function GoldRender(data: LandingData) {
             }}
           >
             <div className="font-bold text-sm" style={{ color: '#151210' }}>
-              Куда приходит песня?
+              {tr('Куда приходит песня?', 'Where is the song delivered?')}
             </div>
             <div className="text-sm mt-2" style={{ color: '#6b6558' }}>
-              Она придет на вашу электронную почту, которую вы указали при заказе.
+              {tr('Она придет на вашу электронную почту, которую вы указали при заказе.', 'It will be sent to the email address you provided when you ordered.')}
             </div>
           </div>
         </div>
@@ -1254,10 +1268,10 @@ function GoldRender(data: LandingData) {
           className="text-3xl font-bold mb-4"
           style={{ fontFamily: "'Prata', serif" }}
         >
-          Подарите то, что запомнят навсегда
+          {tr('Подарите то, что запомнят навсегда', 'Give a gift they will remember forever')}
         </h2>
         <p className="text-base mb-8" style={{ color: '#d9cabb' }}>
-          Тысячи людей уже увидели искреннюю благодарность в глазах тех, кому сделали такой подарок. Ваша очередь.
+          {tr('Тысячи людей уже увидели искреннюю благодарность в глазах тех, кому сделали такой подарок. Ваша очередь.', 'Thousands of people have already seen the heartfelt gratitude in the eyes of those who received this gift. Your turn.')}
         </p>
         <Link
           to={configHref}
@@ -1268,7 +1282,7 @@ function GoldRender(data: LandingData) {
             boxShadow: '0 8px 22px rgba(185,133,46,.45)',
           }}
         >
-          Создать песню →
+          {tr('Создать песню →', 'Create a song →')}
         </Link>
       </section>
 
@@ -1276,7 +1290,7 @@ function GoldRender(data: LandingData) {
       <footer className="text-center py-12 px-5">
         <div className="text-xs space-y-1 mb-6" style={{ color: '#6b6558' }}>
           <div className="font-semibold" style={{ color: '#151210' }}>{COMPANY.name}</div>
-          <div>Рег. № {COMPANY.regNo}</div>
+          <div>{tr('Рег. №', 'Reg. No.')} {COMPANY.regNo}</div>
           <div>{COMPANY.address}</div>
           <div>
             <a href={`mailto:${COMPANY.email}`} className="hover:opacity-70 transition">{COMPANY.email}</a>
@@ -1290,11 +1304,12 @@ function GoldRender(data: LandingData) {
         <div className="text-xs" style={{ color: '#6b6558' }}>
           <div className="mb-2 flex flex-wrap justify-center gap-x-3 gap-y-1">
             {LEGAL_LINKS.map((l) => (
-              <a key={l.doc} href={`/${l.doc}`} className="hover:opacity-70 transition">{l.label}</a>
+              <a key={l.doc} href={localePath(`/${l.doc}`)} className="hover:opacity-70 transition">{tr(l.label.ru, l.label.en)}</a>
             ))}
-            <a href="/contacts" className="hover:opacity-70 transition">Контакты</a>
+            <a href={localePath('/contacts')} className="hover:opacity-70 transition">{tr('Контакты', 'Contacts')}</a>
+            <button type="button" onClick={openCookieSettings} className="hover:opacity-70 transition">{tr('Настройки cookie', 'Cookie settings')}</button>
           </div>
-          <div>© 2026 {COMPANY.name}. Все права защищены.</div>
+          <div>© 2026 {COMPANY.name}. {tr('Все права защищены.', 'All rights reserved.')}</div>
         </div>
       </footer>
 

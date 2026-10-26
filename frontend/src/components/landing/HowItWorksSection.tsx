@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { resolveApiUrl } from '@/lib/http'
 import { cn } from '@/lib/utils'
+import { localePath, useTr } from '@/lib/lang'
 
 function sanitizeHtml(html: string): string {
   return html.replace(/<\/?(?!strong|em|br\s*\/?)(?!span\b)([a-z][a-z0-9]*)\b[^>]*>/gi, '')
@@ -37,9 +38,9 @@ export function HowItWorksSection({
   showPriceInButton = true,
   themeSlug,
   sectionLabel: _sectionLabel = 'Просто',
-  sectionHeadline = 'Три шага к <span class="text-[var(--theme-accent-text)] italic">моменту, который запомнится</span>',
+  sectionHeadline: sectionHeadlineProp,
   steps,
-  ctaButtonText = 'Создать свою песню',
+  ctaButtonText: ctaButtonTextProp,
   backgroundType = 'color',
   backgroundColor = '#1a1a2e',
   backgroundImageUrl = '',
@@ -48,10 +49,16 @@ export function HowItWorksSection({
   sectionClassName,
   showCtaButton = true,
 }: Props) {
+  const tr = useTr()
+  const sectionHeadline = sectionHeadlineProp ?? tr(
+    'Три шага к <span class="text-[var(--theme-accent-text)] italic">моменту, который запомнится</span>',
+    'Three steps to a <span class="text-[var(--theme-accent-text)] italic">moment they\'ll remember</span>',
+  )
+  const ctaButtonText = ctaButtonTextProp ?? tr('Создать свою песню', 'Create your song')
   const defaultSteps: StepItem[] = [
-    { icon: '✍️', title: 'Расскажите историю', desc: '' },
-    { icon: '🎵', title: 'Мы создаём песню', desc: '' },
-    { icon: '😭', title: 'Услышьте реакцию', desc: '' },
+    { icon: '✍️', title: tr('Расскажите историю', 'Tell us the story'), desc: '' },
+    { icon: '🎵', title: tr('Мы создаём песню', 'We create the song'), desc: '' },
+    { icon: '😭', title: tr('Услышьте реакцию', 'Watch their reaction'), desc: '' },
   ]
 
   const resolvedSteps = steps ?? defaultSteps
@@ -108,7 +115,7 @@ export function HowItWorksSection({
         {showCtaButton && (
           <div className="text-center">
             <Button asChild size="lg" className="h-14 px-10 rounded-full bg-[var(--theme-button)] hover:bg-[var(--theme-button)] text-[var(--theme-button-text)] text-lg font-bold shadow-xl hover:opacity-90">
-              <Link to={themeSlug ? `/${themeSlug}/config` : '/config'} className="flex items-center gap-2">
+              <Link to={localePath(themeSlug ? `/${themeSlug}/config` : '/config')} className="flex items-center gap-2">
                 <span>{ctaButtonText}{showPriceInButton ? ` — ${fmtCurrency(paymentAmount)}` : ''}</span>
                 {showPriceInButton && originalAmount && originalAmount > (paymentAmount ?? 0) && (
                   <span className="text-xs font-normal line-through opacity-70 decoration-white/50">{fmtCurrency(originalAmount)}</span>

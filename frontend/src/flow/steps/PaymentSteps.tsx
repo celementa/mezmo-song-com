@@ -11,8 +11,8 @@ import { StepShell } from '@/routes/create/StepShell'
 import { fmtCurrency } from '@/routes/config/utils'
 import { useCurrency } from '@/lib/currency'
 import { UnitPayCheckout, type PaymentMode, type PaymentStart } from '@/features/payment/UnitPayCheckout'
+import { useTr } from '@/lib/lang'
 import type { ShellPassthrough } from './BriefSteps'
-
 
 export function CompareStep({
   shell,
@@ -34,6 +34,7 @@ export function CompareStep({
 }) {
   const [choice, setChoice] = useState<'subscription' | 'onetime'>(defaultChoice)
   const currency = useCurrency()
+  const tr = useTr()
   const fmt = (n: number) => fmtCurrency(n, currency)
 
   return (
@@ -41,10 +42,16 @@ export function CompareStep({
       {...shell}
       canGoBack={false}
       busy={busy}
-      eyebrow="Перед оплатой"
-      headline="Прежде чем платить за одну песню — у нас есть идея получше"
-      subhead="Подписка дешевле разовой покупки и даёт песни каждый месяц, а не одну."
-      primaryLabel="Продолжить"
+      eyebrow={tr('Перед оплатой', 'Before you pay')}
+      headline={tr(
+        'Прежде чем платить за одну песню — у нас есть идея получше',
+        'Before you pay for a single song, we have a better idea',
+      )}
+      subhead={tr(
+        'Подписка дешевле разовой покупки и даёт песни каждый месяц, а не одну.',
+        'A subscription costs less than a single song and gives you a new song every month, not just one.',
+      )}
+      primaryLabel={tr('Продолжить', 'Continue')}
       onPrimary={choice === 'subscription' ? onSubscribe : onOneTime}
     >
       <div className="flex items-center gap-2 text-[#B9852E]">
@@ -55,15 +62,15 @@ export function CompareStep({
           selected={choice === 'subscription'}
           onSelect={() => setChoice('subscription')}
           price={fmt(subscriptionPrice)}
-          note="в месяц, без ограничений"
-          items={['Неограниченное число песен', 'Отмена в любой момент']}
+          note={tr('в месяц, без ограничений', 'per month, unlimited')}
+          items={[tr('Неограниченное число песен', 'Unlimited songs'), tr('Отмена в любой момент', 'Cancel anytime')]}
         />
         <CompareCard
           selected={choice === 'onetime'}
           onSelect={() => setChoice('onetime')}
           price={fmt(oneTimePrice)}
-          note="разово, 1 песня"
-          items={['1 готовая песня', 'Доступ навсегда']}
+          note={tr('разово, 1 песня', 'one-time, 1 song')}
+          items={[tr('1 готовая песня', '1 finished song'), tr('Доступ навсегда', 'Lifetime access')]}
         />
       </div>
     </StepShell>

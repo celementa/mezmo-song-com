@@ -10,6 +10,7 @@ import { runOrderPurchaseTracking } from '@/features/analytics/purchaseTracking'
 import { DeliveryHeldScreen, PostPaymentUpsell } from '@/flow/PostPaymentUpsell'
 import { upsellAlreadySeen } from '@/flow/upsellSeen'
 import { fmtCurrency } from '@/routes/config/utils'
+import { intlLocale, useTr } from '@/lib/lang'
 
 type DeliveryConfig = {
   pageTitle?: string
@@ -151,6 +152,7 @@ function useCountdown(targetTime: number | null) {
 }
 
 function RevisionWaitScreen({ order, accent, cfg, revisionWaitHours, refresh }: { order: UnlockedOrder; accent: string; cfg: DeliveryConfig; revisionWaitHours: number; refresh: () => void }) {
+  const tr = useTr()
   const submittedAt = order.revisionSubmittedAt ? new Date(order.revisionSubmittedAt).getTime() : null
   const waitMs = revisionWaitHours * 60 * 60 * 1000
   const targetTime = submittedAt ? submittedAt + waitMs : null
@@ -171,16 +173,16 @@ function RevisionWaitScreen({ order, accent, cfg, revisionWaitHours, refresh }: 
           <Clock className="h-8 w-8" style={{ color: accent }} />
         </div>
         <h1 className="text-xl font-semibold text-gray-800">
-          {cfg.processingMessage || 'Ваша доработка в работе'}
+          {cfg.processingMessage || tr('Ваша доработка в работе', 'Your revision is in progress')}
         </h1>
         <p className="mt-2 text-sm text-gray-500">
-          Готовим новую версию песни. Примерное время до готовности:
+          {tr('Готовим новую версию песни. Примерное время до готовности:', 'We are preparing a new version of the song. Estimated time left:')}
         </p>
         <div className="mt-6 flex justify-center gap-3">
           {[
-            { value: hours, label: 'Ч' },
-            { value: minutes, label: 'Мин' },
-            { value: seconds, label: 'Сек' },
+            { value: hours, label: tr('Ч', 'H') },
+            { value: minutes, label: tr('Мин', 'Min') },
+            { value: seconds, label: tr('Сек', 'Sec') },
           ].map((unit) => (
             <div key={unit.label} className="flex flex-col items-center">
               <div
@@ -207,6 +209,7 @@ function OrderProcessingScreen({
   accent: string
   refresh: () => void
 }) {
+  const tr = useTr()
   const [purchasingId, setPurchasingId] = useState<string | null>(null)
   const [purchaseError, setPurchaseError] = useState<string | null>(null)
 
@@ -248,7 +251,11 @@ function OrderProcessingScreen({
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setPurchaseError(data.error === 'already_purchased' ? 'Дополнение уже куплено.' : 'Произошла ошибка. Попробуйте ещё раз.')
+        setPurchaseError(
+          data.error === 'already_purchased'
+            ? tr('Дополнение уже куплено.', 'This add-on is already purchased.')
+            : tr('Произошла ошибка. Попробуйте ещё раз.', 'Something went wrong. Please try again.'),
+        )
         return
       }
       const data = await res.json()
@@ -256,7 +263,7 @@ function OrderProcessingScreen({
         window.location.assign(data.invoiceUrl)
       }
     } catch {
-      setPurchaseError('Ошибка сети. Попробуйте ещё раз.')
+      setPurchaseError(tr('Ошибка сети. Попробуйте ещё раз.', 'Network error. Please try again.'))
     } finally {
       setPurchasingId(null)
     }
@@ -275,18 +282,24 @@ function OrderProcessingScreen({
             </div>
           )}
           <h1 className="text-xl font-semibold text-gray-800">
-            Заказ ещё готовится
+            {tr('Заказ ещё готовится', 'Your order is still being prepared')}
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            Нам нужно чуть больше времени, чем рассчитывали. Мы уже делаем песню и пришлём результат как можно скорее.
+            {tr(
+              'Нам нужно чуть больше времени, чем рассчитывали. Мы уже делаем песню и пришлём результат как можно скорее.',
+              "This is taking a little longer than we expected. We're already working on your song and will send it as soon as possible.",
+            )}
           </p>
           <div className="mt-6 flex justify-center">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200" style={{ borderTopColor: accent }} />
           </div>
           <p className="mt-4 text-xs text-gray-400">
             {orderStatus.hasEmail
-              ? 'Когда песня будет готова, отправим уведомление на электронную почту.'
-              : 'Страница обновится автоматически, когда песня будет готова.'}
+              ? tr(
+                  'Когда песня будет готова, отправим уведомление на электронную почту.',
+                  "We'll email you when the song is ready.",
+                )
+              : tr('Страница обновится автоматически, когда песня будет готова.', 'This page will update automatically when the song is ready.')}
           </p>
         </div>
       </div>
@@ -304,22 +317,22 @@ function OrderProcessingScreen({
           </div>
         )}
         <h1 className="text-xl font-semibold text-gray-800">
-          {opp.headline || 'Ваша песня создаётся'}
+          {opp.headline || tr('Ваша песня создаётся', 'Your song is being created')}
         </h1>
         <p className="mt-2 text-sm text-gray-500">
-          {opp.subtitle || 'Мы делаем персональную песню специально для вас'}
+          {opp.subtitle || tr('Мы делаем персональную песню специально для вас', 'We are making a personal song just for you')}
         </p>
 
         {targetTime && (
           <>
             <p className="mt-5 text-xs font-medium text-gray-400 uppercase tracking-wider">
-              {opp.countdownLabel || 'Примерное время до готовности'}
+              {opp.countdownLabel || tr('Примерное время до готовности', 'Estimated time left')}
             </p>
             <div className="mt-3 flex justify-center gap-3">
               {[
-                { value: hours, label: 'Ч' },
-                { value: minutes, label: 'Мин' },
-                { value: seconds, label: 'Сек' },
+                { value: hours, label: tr('Ч', 'H') },
+                { value: minutes, label: tr('Мин', 'Min') },
+                { value: seconds, label: tr('Сек', 'Sec') },
               ].map((unit) => (
                 <div key={unit.label} className="flex flex-col items-center">
                   <div
@@ -339,8 +352,11 @@ function OrderProcessingScreen({
           {opp.bottomText
             ? opp.bottomText
             : orderStatus.hasEmail
-              ? 'Когда песня будет готова, отправим уведомление на электронную почту.'
-              : 'Страница обновится автоматически, когда песня будет готова.'}
+              ? tr(
+                  'Когда песня будет готова, отправим уведомление на электронную почту.',
+                  "We'll email you when the song is ready.",
+                )
+              : tr('Страница обновится автоматически, когда песня будет готова.', 'This page will update automatically when the song is ready.')}
         </p>
 
         {/* Upsell Cards */}
@@ -355,7 +371,7 @@ function OrderProcessingScreen({
                 return (
                   <div key={upsell.id} className="rounded-2xl border border-green-200 bg-green-50 p-4 text-center">
                     <CheckCircle className="h-5 w-5 text-green-600 mx-auto mb-1" />
-                    <p className="text-sm font-medium text-green-800">{upsell.title} — активно</p>
+                    <p className="text-sm font-medium text-green-800">{tr(`${upsell.title} — активно`, `${upsell.title} — active`)}</p>
                   </div>
                 )
               }
@@ -370,10 +386,13 @@ function OrderProcessingScreen({
                       )}
                       {upsell.action === 'express_delivery' && upsell.actionConfig?.deliveryTimeMinutes && (
                         <p className="mt-1 text-xs font-medium" style={{ color: accent }}>
-                          Получите песню через{' '}
+                          {tr('Получите песню через', 'Get your song in')}{' '}
                           {upsell.actionConfig.deliveryTimeMinutes < 60
-                            ? `${upsell.actionConfig.deliveryTimeMinutes} мин`
-                            : `${Math.round(upsell.actionConfig.deliveryTimeMinutes / 60)} ч`}
+                            ? tr(`${upsell.actionConfig.deliveryTimeMinutes} мин`, `${upsell.actionConfig.deliveryTimeMinutes} min`)
+                            : tr(
+                                `${Math.round(upsell.actionConfig.deliveryTimeMinutes / 60)} ч`,
+                                `${Math.round(upsell.actionConfig.deliveryTimeMinutes / 60)} h`,
+                              )}
                           !
                         </p>
                       )}
@@ -398,7 +417,7 @@ function OrderProcessingScreen({
                     ) : (
                       <>
                         <Sparkles className="h-4 w-4" />
-                        {upsell.ctaText || 'Купить'}
+                        {upsell.ctaText || tr('Купить', 'Buy')}
                       </>
                     )}
                   </button>
@@ -427,6 +446,7 @@ function RevisionSection({
   onRegenerated: () => void
   revisionUpsell?: { enabled: boolean; icon?: string; title?: string; description?: string; price?: number; priceLabel?: string; ctaText?: string } | null
 }) {
+  const tr = useTr()
   const [revisionType, setRevisionType] = useState<RevisionType>('describe')
   const [description, setDescription] = useState('')
   const [newLyrics, setNewLyrics] = useState(order.lyricsText ?? '')
@@ -451,7 +471,7 @@ function RevisionSection({
         method: 'POST',
       })
       if (!res.ok) {
-        setError('Произошла ошибка. Попробуйте ещё раз.')
+        setError(tr('Произошла ошибка. Попробуйте ещё раз.', 'Something went wrong. Please try again.'))
         return
       }
       const data = await res.json()
@@ -459,7 +479,7 @@ function RevisionSection({
         window.location.href = data.invoiceUrl
       }
     } catch {
-      setError('Ошибка сети. Попробуйте ещё раз.')
+      setError(tr('Ошибка сети. Попробуйте ещё раз.', 'Network error. Please try again.'))
     } finally {
       setPurchasing(false)
     }
@@ -473,17 +493,21 @@ function RevisionSection({
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
           <RefreshCw className="h-5 w-5" style={{ color: accent }} />
-          <h3 className="text-sm font-semibold text-gray-900">{cfg.revisionUsedTitle || 'Доработки закончились'}</h3>
+          <h3 className="text-sm font-semibold text-gray-900">
+            {cfg.revisionUsedTitle || tr('Доработки закончились', 'No revisions left')}
+          </h3>
         </div>
         <p className="text-xs text-gray-500 mb-4">
-          {cfg.revisionUsedMessage || 'Вы использовали все бесплатные доработки.'}
+          {cfg.revisionUsedMessage || tr('Вы использовали все бесплатные доработки.', 'You have used all free revisions.')}
         </p>
         <div className="rounded-xl border p-4 space-y-3">
           <div className="flex items-center gap-2">
             <span className="text-lg">{revisionUpsell.icon || '🔄'}</span>
-            <span className="text-sm font-semibold text-gray-900">{revisionUpsell.title || 'Доработки'}</span>
+            <span className="text-sm font-semibold text-gray-900">{revisionUpsell.title || tr('Доработки', 'Revisions')}</span>
           </div>
-          <p className="text-xs text-gray-500">{revisionUpsell.description || 'Нужны ещё правки? Купите пакет доработок.'}</p>
+          <p className="text-xs text-gray-500">
+            {revisionUpsell.description || tr('Нужны ещё правки? Купите пакет доработок.', 'Need more changes? Buy a revision pack.')}
+          </p>
           <div className="flex items-center justify-between">
             <span className="text-sm font-bold" style={{ color: accent }}>
               {typeof revisionUpsell.price === 'number' ? fmtCurrency(revisionUpsell.price) : ''}
@@ -502,10 +526,10 @@ function RevisionSection({
             {purchasing ? (
               <span className="flex items-center justify-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Обработка...
+                {tr('Обработка...', 'Processing...')}
               </span>
             ) : (
-              revisionUpsell.ctaText || 'Купить доработку'
+              revisionUpsell.ctaText || tr('Купить доработку', 'Buy a revision')
             )}
           </button>
         </div>
@@ -531,21 +555,25 @@ function RevisionSection({
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setError(data.error === 'max_regenerations_reached' ? 'Доработок не осталось.' : 'Произошла ошибка. Попробуйте ещё раз.')
+        setError(
+          data.error === 'max_regenerations_reached'
+            ? tr('Доработок не осталось.', 'No revisions left.')
+            : tr('Произошла ошибка. Попробуйте ещё раз.', 'Something went wrong. Please try again.'),
+        )
         return
       }
       onRegenerated()
     } catch {
-      setError('Ошибка сети. Попробуйте ещё раз.')
+      setError(tr('Ошибка сети. Попробуйте ещё раз.', 'Network error. Please try again.'))
     } finally {
       setSubmitting(false)
     }
   }
 
   const tabs: { key: RevisionType; label: string }[] = [
-    { key: 'describe', label: cfg.revisionTabDescribe || 'Описать правки' },
-    { key: 'lyrics', label: cfg.revisionTabLyrics || 'Править текст' },
-    { key: 'new_story', label: cfg.revisionTabNewStory || 'Новая история' },
+    { key: 'describe', label: cfg.revisionTabDescribe || tr('Описать правки', 'Describe changes') },
+    { key: 'lyrics', label: cfg.revisionTabLyrics || tr('Править текст', 'Edit lyrics') },
+    { key: 'new_story', label: cfg.revisionTabNewStory || tr('Новая история', 'New story') },
   ]
 
   return (
@@ -553,19 +581,26 @@ function RevisionSection({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <RefreshCw className="h-5 w-5" style={{ color: accent }} />
-          <h3 className="text-sm font-semibold text-gray-900">{cfg.revisionSectionTitle || 'Нужны изменения?'}</h3>
+          <h3 className="text-sm font-semibold text-gray-900">
+            {cfg.revisionSectionTitle || tr('Нужны изменения?', 'Need changes?')}
+          </h3>
         </div>
         <span
           className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
           style={{ backgroundColor: accent }}
         >
-          {unlimitedRevisions ? 'Доработки: без ограничений' : `Осталось доработок: ${revisionsLeft}`}
+          {unlimitedRevisions
+            ? tr('Доработки: без ограничений', 'Revisions: unlimited')
+            : tr(`Осталось доработок: ${revisionsLeft}`, `Revisions left: ${revisionsLeft}`)}
         </span>
       </div>
 
       <p className="text-xs text-gray-500 mb-4">
         {cfg.revisionSectionDescription ||
-          'Напишите, что хотите поменять — сделаем новую версию. Можно изменить стиль музыки или вокала.'}
+          tr(
+            'Напишите, что хотите поменять — сделаем новую версию. Можно изменить стиль музыки или вокала.',
+            'Tell us what you want to change and we will make a new version. You can also change the music style or vocals.',
+          )}
       </p>
 
       <div className="flex gap-1 mb-4 border-b">
@@ -587,11 +622,14 @@ function RevisionSection({
 
       {revisionType === 'describe' && (
         <div className="space-y-2 mb-4">
-          <label className="text-xs text-gray-500">Опишите правки — остальное сделаем мы.</label>
+          <label className="text-xs text-gray-500">{tr('Опишите правки — остальное сделаем мы.', 'Describe the changes — we will handle the rest.')}</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder={`Например:\n- Заменить имя Иван на Ваня\n- Сделать припев позитивнее\n- Упомянуть нашу поездку в Санкт-Петербург`}
+            placeholder={tr(
+              'Например:\n- Заменить имя Иван на Ваня\n- Сделать припев позитивнее\n- Упомянуть нашу поездку в Санкт-Петербург',
+              'For example:\n- Make the chorus more upbeat\n- Mention our trip to Paris\n- Change the ending to a happier one',
+            )}
             className="w-full rounded-lg border bg-gray-50 p-3 text-sm min-h-[100px] resize-y focus:outline-none focus:ring-2 focus:border-transparent"
             style={{ '--tw-ring-color': accent + '60' } as React.CSSProperties}
           />
@@ -600,7 +638,9 @@ function RevisionSection({
 
       {revisionType === 'lyrics' && (
         <div className="space-y-2 mb-4">
-          <label className="text-xs text-gray-500">Отредактируйте текст ниже — песню запишем ровно по нему.</label>
+          <label className="text-xs text-gray-500">
+            {tr('Отредактируйте текст ниже — песню запишем ровно по нему.', 'Edit the lyrics below — we will record the song exactly as written.')}
+          </label>
           <textarea
             value={newLyrics}
             onChange={(e) => setNewLyrics(e.target.value)}
@@ -612,14 +652,14 @@ function RevisionSection({
               отдельной ручки «откатить» не нужно, это обычная доработка. */}
           {(order.lyricsVersions?.length ?? 0) > 0 && (
             <div className="rounded-lg border bg-gray-50 p-3 space-y-2">
-              <p className="text-xs font-medium text-gray-700">Прошлые версии текста</p>
+              <p className="text-xs font-medium text-gray-700">{tr('Прошлые версии текста', 'Previous lyrics versions')}</p>
               {order.lyricsVersions?.map((v) => (
                 <div key={v.version} className="flex items-start gap-2">
                   <button
                     onClick={() => setNewLyrics(v.lyricsText)}
                     className="shrink-0 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors"
                   >
-                    Вернуть
+                    {tr('Вернуть', 'Restore')}
                   </button>
                   <span className="text-xs text-gray-500 line-clamp-2">
                     {v.lyricsText.replace(/\[[^\]]*\]/g, ' ').trim().slice(0, 120)}
@@ -633,11 +673,11 @@ function RevisionSection({
 
       {revisionType === 'new_story' && (
         <div className="space-y-2 mb-4">
-          <label className="text-xs text-gray-500">Сделаем новый текст и музыку с нуля.</label>
+          <label className="text-xs text-gray-500">{tr('Сделаем новый текст и музыку с нуля.', 'We will write new lyrics and music from scratch.')}</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Расскажите новую историю или тему для песни..."
+            placeholder={tr('Расскажите новую историю или тему для песни...', 'Tell us the new story or theme for the song...')}
             className="w-full rounded-lg border bg-gray-50 p-3 text-sm min-h-[100px] resize-y focus:outline-none focus:ring-2 focus:border-transparent"
             style={{ '--tw-ring-color': accent + '60' } as React.CSSProperties}
           />
@@ -646,14 +686,14 @@ function RevisionSection({
 
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">СТИЛЬ МУЗЫКИ</label>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">{tr('СТИЛЬ МУЗЫКИ', 'MUSIC STYLE')}</label>
           <select
             value={musicStyle}
             onChange={(e) => setMusicStyle(e.target.value)}
             className="w-full rounded-lg border bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:border-transparent appearance-none"
             style={{ '--tw-ring-color': accent + '60' } as React.CSSProperties}
           >
-            <option value="keep">{order.musicStyle || 'Как сейчас'}</option>
+            <option value="keep">{order.musicStyle || tr('Как сейчас', 'As is')}</option>
             <option value="Pop">Pop</option>
             <option value="R&B">R&B</option>
             <option value="Acoustic">Acoustic</option>
@@ -666,7 +706,7 @@ function RevisionSection({
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">ВОКАЛ</label>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">{tr('ВОКАЛ', 'VOCALS')}</label>
           <select
             value={voiceStyle}
             onChange={(e) => setVoiceStyle(e.target.value)}
@@ -676,25 +716,25 @@ function RevisionSection({
             <option value="keep">
               {order.voiceStyle
                 ? order.voiceStyle === 'female'
-                  ? cfg.voiceFemaleLabel || 'Женский'
-                  : cfg.voiceMaleLabel || 'Мужской'
-                : cfg.voiceKeepLabel || 'Как сейчас'}
+                  ? cfg.voiceFemaleLabel || tr('Женский', 'Female')
+                  : cfg.voiceMaleLabel || tr('Мужской', 'Male')
+                : cfg.voiceKeepLabel || tr('Как сейчас', 'As is')}
             </option>
-            <option value="female">{cfg.voiceFemaleLabel || 'Женский'}</option>
-            <option value="male">{cfg.voiceMaleLabel || 'Мужской'}</option>
+            <option value="female">{cfg.voiceFemaleLabel || tr('Женский', 'Female')}</option>
+            <option value="male">{cfg.voiceMaleLabel || tr('Мужской', 'Male')}</option>
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-gray-600 mb-1 block">ЯЗЫК</label>
+          <label className="text-xs font-medium text-gray-600 mb-1 block">{tr('ЯЗЫК', 'LANGUAGE')}</label>
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
             className="w-full rounded-lg border bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:border-transparent appearance-none disabled:opacity-50"
             style={{ '--tw-ring-color': accent + '60' } as React.CSSProperties}
           >
-            <option value="keep">Как сейчас</option>
-            <option value="Russian">Русский</option>
-            <option value="English">Английский</option>
+            <option value="keep">{tr('Как сейчас', 'As is')}</option>
+            <option value="Russian">{tr('Русский', 'Russian')}</option>
+            <option value="English">{tr('Английский', 'English')}</option>
           </select>
         </div>
       </div>
@@ -723,10 +763,10 @@ function RevisionSection({
         {submitting ? (
           <span className="flex items-center justify-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Отправка...
+            {tr('Отправка...', 'Sending...')}
           </span>
         ) : (
-          cfg.revisionSubmitButtonText || 'Отправить правки'
+          cfg.revisionSubmitButtonText || tr('Отправить правки', 'Send changes')
         )}
       </button>
 
@@ -734,18 +774,21 @@ function RevisionSection({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={() => setShowConfirmModal(false)}>
           <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold text-gray-900">
-              {cfg.revisionConfirmTitle || 'Перед новой генерацией'}
+              {cfg.revisionConfirmTitle || tr('Перед новой генерацией', 'Before a new generation')}
             </h3>
             <p className="text-sm text-gray-600 whitespace-pre-line">
               {cfg.revisionConfirmMessage ||
-                'Скачайте текущие песни до запроса доработки — при перегенерации старые файлы могут быть удалены.\n\nМузыка и звучание могут частично измениться.'}
+                tr(
+                  'Скачайте текущие песни до запроса доработки — при перегенерации старые файлы могут быть удалены.\n\nМузыка и звучание могут частично измениться.',
+                  'Download your current songs before requesting a revision — old files may be deleted when the song is regenerated.\n\nThe music and sound may change partially.',
+                )}
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowConfirmModal(false)}
                 className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                {cfg.revisionCancelButtonText || 'Отмена'}
+                {cfg.revisionCancelButtonText || tr('Отмена', 'Cancel')}
               </button>
               <button
                 onClick={() => {
@@ -755,7 +798,7 @@ function RevisionSection({
                 className="flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 transition-all"
                 style={{ backgroundColor: accent }}
               >
-                {cfg.revisionConfirmButtonText || 'Подтвердить'}
+                {cfg.revisionConfirmButtonText || tr('Подтвердить', 'Confirm')}
               </button>
             </div>
           </div>
@@ -766,6 +809,7 @@ function RevisionSection({
 }
 
 export function OrderDeliveryRoute() {
+  const tr = useTr()
   const { orderId } = useParams<{ orderId: string }>()
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null)
   const [unlockedOrders, setUnlockedOrders] = useState<UnlockedOrder[] | null>(null)
@@ -931,8 +975,10 @@ export function OrderDeliveryRoute() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
             <Music className="h-8 w-8 text-gray-400" />
           </div>
-          <h1 className="text-xl font-semibold text-gray-800">Заказ не найден</h1>
-          <p className="mt-2 text-sm text-gray-500">Такого заказа нет или он удалён.</p>
+          <h1 className="text-xl font-semibold text-gray-800">{tr('Заказ не найден', 'Order not found')}</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            {tr('Такого заказа нет или он удалён.', 'This order does not exist or has been deleted.')}
+          </p>
         </div>
       </div>
     )
@@ -943,9 +989,12 @@ export function OrderDeliveryRoute() {
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-50 to-white px-4 py-12">
         <div className="text-center max-w-sm">
           {renderLogo('lg')}
-          <h1 className="text-xl font-semibold text-gray-800">Ожидается оплата</h1>
+          <h1 className="text-xl font-semibold text-gray-800">{tr('Ожидается оплата', 'Awaiting payment')}</h1>
           <p className="mt-3 text-sm text-gray-500">
-            Заказ ещё не оплачен. Завершите оплату, чтобы мы начали создание песни.
+            {tr(
+              'Заказ ещё не оплачен. Завершите оплату, чтобы мы начали создание песни.',
+              'This order is not paid yet. Complete the payment so we can start creating your song.',
+            )}
           </p>
           {orderStatus.xenditInvoiceUrl && (
             <a
@@ -953,7 +1002,7 @@ export function OrderDeliveryRoute() {
               className="mt-6 inline-block rounded-full px-8 py-3 text-sm font-semibold text-white"
               style={{ backgroundColor: accent }}
             >
-              Оплатить
+              {tr('Оплатить', 'Pay')}
             </a>
           )}
           {!orderStatus.xenditInvoiceUrl && orderStatus.resumeUrl && (
@@ -962,7 +1011,7 @@ export function OrderDeliveryRoute() {
               className="mt-6 inline-block rounded-full px-8 py-3 text-sm font-semibold text-white"
               style={{ backgroundColor: accent }}
             >
-              Продолжить оформление
+              {tr('Продолжить оформление', 'Continue checkout')}
             </a>
           )}
         </div>
@@ -1005,9 +1054,12 @@ export function OrderDeliveryRoute() {
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ backgroundColor: accent + '15' }}>
               <Clock className="h-8 w-8" style={{ color: accent }} />
             </div>
-            <h1 className="text-xl font-semibold text-gray-800">Правки в работе</h1>
+            <h1 className="text-xl font-semibold text-gray-800">{tr('Правки в работе', 'Revisions in progress')}</h1>
             <p className="mt-2 text-sm text-gray-500">
-              Готовим новую версию вашей песни. Это займёт несколько минут — страница обновится автоматически.
+              {tr(
+                'Готовим новую версию вашей песни. Это займёт несколько минут — страница обновится автоматически.',
+                'We are preparing a new version of your song. This will take a few minutes — the page will update automatically.',
+              )}
             </p>
             <div className="mt-6 flex justify-center">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200" style={{ borderTopColor: accent }} />
@@ -1024,8 +1076,10 @@ export function OrderDeliveryRoute() {
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-50 to-white px-4">
         <div className="text-center max-w-sm">
           {renderLogo('lg')}
-          <h1 className="text-xl font-semibold text-gray-800">Нет данных</h1>
-          <p className="mt-2 text-sm text-gray-500">Не удалось найти контент для этого заказа.</p>
+          <h1 className="text-xl font-semibold text-gray-800">{tr('Нет данных', 'No data')}</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            {tr('Не удалось найти контент для этого заказа.', 'We could not find the content for this order.')}
+          </p>
         </div>
       </div>
     )
@@ -1068,7 +1122,7 @@ export function OrderDeliveryRoute() {
           <div className="text-center mb-8">
             {renderLogo('lg')}
             <h1 className="text-2xl font-bold text-gray-900">
-              {cfg.successMessage || 'Ваша песня готова!'}
+              {cfg.successMessage || tr('Ваша песня готова!', 'Your song is ready!')}
             </h1>
           </div>
 
@@ -1085,9 +1139,11 @@ export function OrderDeliveryRoute() {
                       </div>
                       <div>
                         <h3 className="text-sm font-semibold text-gray-900">
-                          {order.recipientName ? `Песня для ${order.recipientName}` : 'Ваша песня'}
+                          {order.recipientName
+                            ? tr(`Песня для ${order.recipientName}`, `Song for ${order.recipientName}`)
+                            : tr('Ваша песня', 'Your song')}
                         </h3>
-                        <p className="text-xs text-gray-500">{cfg.processingMessage || 'Создаём…'}</p>
+                        <p className="text-xs text-gray-500">{cfg.processingMessage || tr('Создаём…', 'Creating…')}</p>
                       </div>
                     </div>
                   </div>
@@ -1101,10 +1157,13 @@ export function OrderDeliveryRoute() {
                   {unlockedOrders.length > 1 && order.recipientName && (
                     <div className="flex items-center gap-2">
                       <h2 className="text-sm font-semibold text-gray-700">
-                        {(cfg.headerText || 'Персональная песня для {recipientName}').replace('{recipientName}', order.recipientName)}
+                        {(cfg.headerText || tr('Персональная песня для {recipientName}', 'Personal song for {recipientName}')).replace(
+                          '{recipientName}',
+                          order.recipientName,
+                        )}
                       </h2>
                       <span className="text-xs text-gray-400">
-                        {new Date(order.createdAt).toLocaleDateString()}
+                        {new Date(order.createdAt).toLocaleDateString(intlLocale())}
                       </span>
                     </div>
                   )}
@@ -1112,7 +1171,7 @@ export function OrderDeliveryRoute() {
                   <div className="rounded-2xl border bg-white p-5 shadow-sm">
                     <div className="flex items-center gap-2 mb-4">
                       <Music className="h-5 w-5" style={{ color: accent }} />
-                      <h3 className="text-sm font-semibold text-gray-900">Прослушать</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">{tr('Прослушать', 'Listen')}</h3>
                     </div>
 
                     <div className={order.tracks.length > 1 ? 'grid grid-cols-1 gap-4' : ''}>
@@ -1120,7 +1179,7 @@ export function OrderDeliveryRoute() {
                         <div key={`${order.id}-${idx}`} className="space-y-2">
                           {order.tracks.length > 1 && (
                             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                              Вариант {idx + 1}
+                              {tr(`Вариант ${idx + 1}`, `Version ${idx + 1}`)}
                             </span>
                           )}
                           <audio controls className="w-full h-10" preload="metadata" onPlay={() => reportEngagement(orderId, 'listen')}>
@@ -1134,7 +1193,7 @@ export function OrderDeliveryRoute() {
                             style={{ backgroundColor: accent }}
                           >
                             <Download className="h-4 w-4" />
-                            {cfg.downloadButtonText || 'Скачать MP3'}
+                            {cfg.downloadButtonText || tr('Скачать MP3', 'Download MP3')}
                           </a>
                         </div>
                       ))}
@@ -1149,7 +1208,7 @@ export function OrderDeliveryRoute() {
                       >
                         <div className="flex items-center gap-2">
                           <FileText className="h-5 w-5 text-amber-600" />
-                          <h3 className="text-sm font-semibold text-gray-900">Текст песни</h3>
+                          <h3 className="text-sm font-semibold text-gray-900">{tr('Текст песни', 'Lyrics')}</h3>
                         </div>
                         {isLyricsOpen ? (
                           <ChevronUp className="h-4 w-4 text-gray-400" />
@@ -1167,7 +1226,7 @@ export function OrderDeliveryRoute() {
                             className="mt-3 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                           >
                             <Download className="h-3.5 w-3.5" />
-                            {cfg.lyricsButtonText || 'Скачать .txt'}
+                            {cfg.lyricsButtonText || tr('Скачать .txt', 'Download .txt')}
                           </button>
                         </div>
                       )}

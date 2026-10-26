@@ -92,16 +92,22 @@ func SetEmailEnabled(ctx context.Context, db *sql.DB, kind string, enabled bool)
 }
 
 // emailTemplateKey — id шаблона Unisender Go для письма в settings.
-func emailTemplateKey(kind string) string { return "emails." + kind + ".template_id" }
+// Шаблон английской версии письма (заказы с /en) хранится отдельным ключом.
+func emailTemplateKey(kind, lang string) string {
+	if lang == LangEN {
+		return "emails." + kind + ".template_id_en"
+	}
+	return "emails." + kind + ".template_id"
+}
 
 // EmailTemplateID — шаблон Unisender Go, по которому уходит письмо. Пусто —
 // письмо уходит нашим текстом через SMTP.
-func EmailTemplateID(ctx context.Context, db *sql.DB, kind string) string {
-	return GetSetting(ctx, db, emailTemplateKey(kind), "")
+func EmailTemplateID(ctx context.Context, db *sql.DB, kind, lang string) string {
+	return GetSetting(ctx, db, emailTemplateKey(kind, lang), "")
 }
 
-func SetEmailTemplateID(ctx context.Context, db *sql.DB, kind, templateID string) error {
-	return SetSetting(ctx, db, emailTemplateKey(kind), templateID)
+func SetEmailTemplateID(ctx context.Context, db *sql.DB, kind, lang, templateID string) error {
+	return SetSetting(ctx, db, emailTemplateKey(kind, lang), templateID)
 }
 
 // LogEmail пишет попытку отправки. CreatedAt проставляется здесь.

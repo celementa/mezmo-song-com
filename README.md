@@ -103,6 +103,12 @@ SPA-фолбэк на `index.html`), Let's Encrypt через certbot с авт�
 | Воронка `/create` (prepay) | `frontend/src/routes/create/` |
 | Шаг оплаты (обе воронки) | `frontend/src/features/payment/UnitPayCheckout.tsx` |
 | Страница заказа | `frontend/src/routes/OrderDeliveryRoute.tsx` |
+| Язык сайта (RU на корне, EN под `/en`) | `frontend/src/lib/lang.ts` (`tr('рус', 'eng')`, `localePath`), переключатель — `components/LangSwitch.tsx`, ранний редирект по языку браузера — `index.html` |
+| Английские тексты лендинга | `frontend/intl/landing.en.json` — оверлей поверх `publicSiteConfig` (`useLandingData`) |
+| Английские документы | `frontend/src/legal/en/*.md` |
+| Промпты песни по-английски | `data/prompts/en/*.md`; язык заказа — `orders.language` (заголовок `X-Site-Lang` с фронта) |
+| Письма на английском | `/admin/emails` — отдельный id шаблона Unisender Go для EN; без него уходит английский текст из кода |
+| Cookie-баннер, Consent Mode v2 | `frontend/src/lib/consent.ts`, `components/CookieBanner.tsx`, умолчания — `index.html` до GTM |
 | Админка | `/admin/orders` (тип оплаты, провайдер, URL захода, «Скачать CSV»), `/admin/analytics`, `/admin/settings`, `/admin/emails` |
 | Футер с реквизитами и логотипами | `frontend/src/templates/gold.tsx`, `components/landing/PaymentLogos.tsx` |
 

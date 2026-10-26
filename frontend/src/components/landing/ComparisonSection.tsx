@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react'
+import { useTr } from '@/lib/lang'
 
 function sanitizeHtml(html: string): string {
   return html.replace(/<\/?(?!strong|em|br\s*\/?)(?!span\b)([a-z][a-z0-9]*)\b[^>]*>/gi, '')
@@ -22,35 +23,41 @@ type Props = {
   checklistItems?: ChecklistItem[]
 }
 
-const defaultGiftItems: GiftItem[] = [
-  { icon: '🧴', name: 'Парфюм', fromUsd: 120 },
-  { icon: '⌚', name: 'Часы', fromUsd: 180 },
-  { icon: '👔', name: 'Одежда', fromUsd: 60 },
-  { icon: '🎮', name: 'Гаджет', fromUsd: 350 },
-]
-
-const defaultChecklistItems: ChecklistItem[] = [
-  { text: '<strong>Имя</strong> в тексте песни' },
-  { text: 'Ваша история и воспоминания' },
-  { text: 'Звук студийного качества' },
-]
-
 export function ComparisonSection({
   fmtCurrency,
   paymentAmount,
   originalAmount,
   showPrice = true,
   deliveryEtaSentence,
-  headline =
-    'Подарок, который <span class="text-gray-400 line-through decoration-[var(--theme-accent)]">забудут</span>, и тот, который <span class="text-[var(--theme-accent-text)] italic">включат снова</span>',
-  giftItems = defaultGiftItems,
-  forgottenLabel = 'Забудут через месяц ❌',
-  foreverLabel = 'Будут слушать снова и снова ✅',
-  bestPriceBadge = 'ЛУЧШАЯ ЦЕНА',
-  productTitle = 'Персональная песня',
-  checklistItems = defaultChecklistItems,
+  headline: headlineProp,
+  giftItems: giftItemsProp,
+  forgottenLabel: forgottenLabelProp,
+  foreverLabel: foreverLabelProp,
+  bestPriceBadge: bestPriceBadgeProp,
+  productTitle: productTitleProp,
+  checklistItems: checklistItemsProp,
 }: Props) {
-  const allChecklistItems = [...checklistItems, { text: `Dikirim ${deliveryEtaSentence}` }]
+  const tr = useTr()
+  const giftItems = giftItemsProp ?? [
+    { icon: '🧴', name: tr('Парфюм', 'Perfume'), fromUsd: 120 },
+    { icon: '⌚', name: tr('Часы', 'Watch'), fromUsd: 180 },
+    { icon: '👔', name: tr('Одежда', 'Clothing'), fromUsd: 60 },
+    { icon: '🎮', name: tr('Гаджет', 'Gadget'), fromUsd: 350 },
+  ]
+  const checklistItems = checklistItemsProp ?? [
+    { text: tr('<strong>Имя</strong> в тексте песни', '<strong>Their name</strong> in the lyrics') },
+    { text: tr('Ваша история и воспоминания', 'Your story and memories') },
+    { text: tr('Звук студийного качества', 'Studio-quality sound') },
+  ]
+  const headline = headlineProp ?? tr(
+    'Подарок, который <span class="text-gray-400 line-through decoration-[var(--theme-accent)]">забудут</span>, и тот, который <span class="text-[var(--theme-accent-text)] italic">включат снова</span>',
+    'A gift they\'ll <span class="text-gray-400 line-through decoration-[var(--theme-accent)]">forget</span>, versus one they\'ll <span class="text-[var(--theme-accent-text)] italic">play again and again</span>',
+  )
+  const forgottenLabel = forgottenLabelProp ?? tr('Забудут через месяц ❌', 'Forgotten within a month ❌')
+  const foreverLabel = foreverLabelProp ?? tr('Будут слушать снова и снова ✅', 'Played again and again ✅')
+  const bestPriceBadge = bestPriceBadgeProp ?? tr('ЛУЧШАЯ ЦЕНА', 'BEST VALUE')
+  const productTitle = productTitleProp ?? tr('Персональная песня', 'Personalized song')
+  const allChecklistItems = [...checklistItems, { text: tr(`Доставка ${deliveryEtaSentence}`, `Delivered ${deliveryEtaSentence}`) }]
 
   return (
     <section aria-labelledby="comparison-title" className="space-y-10 text-center max-w-5xl mx-auto">
@@ -65,7 +72,7 @@ export function ComparisonSection({
               <div key={i} className="flex flex-col items-center gap-2">
                 <span className="text-4xl mb-2">{item.icon}</span>
                 <span className="font-medium text-gray-900">{item.name}</span>
-                <span className="text-xs font-bold bg-gray-200 px-2 py-1 rounded text-gray-600">от {fmtCurrency(item.fromUsd)}</span>
+                <span className="text-xs font-bold bg-gray-200 px-2 py-1 rounded text-gray-600">{tr('от', 'from')} {fmtCurrency(item.fromUsd)}</span>
               </div>
             ))}
           </div>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Check, Loader2, PartyPopper, Sparkles } from 'lucide-react'
 
 import { apiPost } from '@/lib/http'
+import { intlLocale, localePath, useTr } from '@/lib/lang'
 import { CREAM, GOLD } from '@/routes/create/StepShell'
 import { useFlowConfig } from './useFlowConfig'
 import { markUpsellSeen } from './upsellSeen'
@@ -47,6 +48,7 @@ export function PostPaymentUpsell({
   onDone: () => void
 }) {
   const navigate = useNavigate()
+  const tr = useTr()
   const flow = useFlowConfig({ trackAssignment: false })
   const [screen, setScreen] = useState<'subscription' | 'stems'>('subscription')
   const [busy, setBusy] = useState(false)
@@ -95,13 +97,19 @@ export function PostPaymentUpsell({
       const msg = e instanceof Error ? e.message : ''
       if (msg === 'no_saved_method') {
         markUpsellSeen(orderRef)
-        navigate('/subscribe')
+        navigate(localePath('/subscribe'))
         return
       }
       setError(
         msg === 'already_active'
-          ? 'У этого email уже есть подписка — сегодняшняя песня и так ваша.'
-          : 'Не получилось оформить подписку. Песня уже ваша — попробуйте позже.',
+          ? tr(
+              'У этого email уже есть подписка — сегодняшняя песня и так ваша.',
+              'This email already has a subscription — today’s song is yours anyway.',
+            )
+          : tr(
+              'Не получилось оформить подписку. Песня уже ваша — попробуйте позже.',
+              "Couldn't set up the subscription. The song is already yours — please try again later.",
+            ),
       )
     } finally {
       setBusy(false)
@@ -123,9 +131,9 @@ export function PostPaymentUpsell({
     try {
       const res = await apiPost<{ orderId: string }>(`/api/orders/${encodeURIComponent(orderRef)}/upsell/stems`, {})
       markUpsellSeen(orderRef)
-      navigate(`/checkout?orderId=${encodeURIComponent(res.orderId)}`)
+      navigate(localePath(`/checkout?orderId=${encodeURIComponent(res.orderId)}`))
     } catch {
-      setError('Не получилось оформить. Песня уже ваша — попробуйте позже.')
+      setError(tr('Не получилось оформить. Песня уже ваша — попробуйте позже.', "Couldn't complete the order. The song is already yours — please try again later."))
       setBusy(false)
     }
   }
@@ -140,33 +148,36 @@ export function PostPaymentUpsell({
       <UpsellCard>
         <div className="flex items-center gap-2">
           <PartyPopper className="h-4 w-4 text-[#B9852E]" />
-          <span className={eyebrowClass}>Песня оплачена</span>
+          <span className={eyebrowClass}>{tr('Песня оплачена', 'Song paid')}</span>
         </div>
         <h1 className="mt-2 font-[Prata,serif] text-[22px] leading-tight text-[#151210] sm:text-[26px]">
-          Но у нас есть идея получше
+          {tr('Но у нас есть идея получше', 'But we have a better idea')}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-[#6b6259]">
-          За те же деньги вы можете получать неограниченное число песен каждый месяц, а не одну разово.
+          {tr(
+            'За те же деньги вы можете получать неограниченное число песен каждый месяц, а не одну разово.',
+            'For the same money, you can get unlimited songs every month instead of just one.',
+          )}
         </p>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-[#EFE4D2] bg-[#FDFBF7] p-4">
-            <p className={eyebrowClass}>То, что вы купили</p>
+            <p className={eyebrowClass}>{tr('То, что вы купили', 'What you bought')}</p>
             <p className="mt-1 text-lg font-bold text-[#151210]">{fmtCurrency(paidAmount)}</p>
-            <p className="text-[11px] text-[#9c9186]">разово, 1 песня</p>
+            <p className="text-[11px] text-[#9c9186]">{tr('разово, 1 песня', 'one-time, 1 song')}</p>
             <ul className="mt-3 space-y-1 text-[11px] text-[#6b6259]">
-              <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#b4a893]" /> 1 готовая песня</li>
-              <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#b4a893]" /> Доступ навсегда</li>
+              <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#b4a893]" /> {tr('1 готовая песня', '1 finished song')}</li>
+              <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#b4a893]" /> {tr('Доступ навсегда', 'Lifetime access')}</li>
             </ul>
           </div>
           <div className="rounded-2xl border border-[#d9b978] bg-[#FCF6EA] p-4 shadow-[0_10px_26px_-20px_rgba(185,133,46,0.9)]">
-            <p className={eyebrowClass}>Выгоднее</p>
+            <p className={eyebrowClass}>{tr('Выгоднее', 'Better value')}</p>
             <p className="mt-1 text-lg font-bold text-[#151210]">$0</p>
-            <p className="text-[11px] text-[#9c9186]">сегодня, без ограничений</p>
+            <p className="text-[11px] text-[#9c9186]">{tr('сегодня, без ограничений', 'today, unlimited')}</p>
             <ul className="mt-3 space-y-1 text-[11px] text-[#3b352f]">
-              <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#2f7a45]" /> Неограниченное число песен</li>
-              <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#2f7a45]" /> Отмена в любой момент</li>
-              <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#2f7a45]" /> Сегодняшняя песня уже включена</li>
+              <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#2f7a45]" /> {tr('Неограниченное число песен', 'Unlimited songs')}</li>
+              <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#2f7a45]" /> {tr('Отмена в любой момент', 'Cancel anytime')}</li>
+              <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#2f7a45]" /> {tr('Сегодняшняя песня уже включена', "Today's song is already included")}</li>
             </ul>
           </div>
         </div>
@@ -178,10 +189,10 @@ export function PostPaymentUpsell({
         )}
 
         <p className="mt-5 text-center text-xs text-[#9c9186]">
-          Далее — {fmtCurrency(subscriptionPrice)}/мес, спишем через месяц. Отмена в любой момент.
+          {tr('Далее', 'Then')} — {fmtCurrency(subscriptionPrice)}{tr('/мес, спишем через месяц. Отмена в любой момент.', '/mo, billed in a month. Cancel anytime.')}
         </p>
         <button type="button" className={`${primaryButtonClass} mt-3`} style={primaryButtonStyle} disabled={busy} onClick={subscribeFromOrder}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Перейти на безлимит за $0'}
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tr('Перейти на безлимит за $0', 'Go unlimited for $0')}
         </button>
         {/* Вторичная кнопка с рамкой, а не ссылка: на телефоне «Не сейчас»
             без рамки терялось под основной и не читалось как кликабельное. */}
@@ -191,7 +202,7 @@ export function PostPaymentUpsell({
           disabled={busy}
           onClick={goToStemsOrFinish}
         >
-          Не сейчас
+          {tr('Не сейчас', 'Not now')}
         </button>
       </UpsellCard>
     )
@@ -201,13 +212,13 @@ export function PostPaymentUpsell({
     <UpsellCard>
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-[#B9852E]" />
-        <span className={eyebrowClass}>Дополнительно</span>
+        <span className={eyebrowClass}>{tr('Дополнительно', 'Extra')}</span>
       </div>
       <h1 className="mt-2 font-[Prata,serif] text-[22px] leading-tight text-[#151210] sm:text-[26px]">
-        Пока песня свежая
+        {tr('Пока песня свежая', 'While the song is fresh')}
       </h1>
       <p className="mt-2 text-sm leading-relaxed text-[#6b6259]">
-        Добавить инструментал и вокал отдельными дорожками?
+        {tr('Добавить инструментал и вокал отдельными дорожками?', 'Add the instrumental and vocals as separate tracks?')}
       </p>
 
       <div className="mt-5 rounded-2xl border border-[#EFE4D2] bg-[#FDFBF7] p-4">
@@ -217,7 +228,7 @@ export function PostPaymentUpsell({
           </span>
           <div>
             <div className="text-sm font-bold text-[#151210]">+{fmtCurrency(stemsPrice)}</div>
-            <div className="text-xs text-[#6b6259]">отдельный платёж</div>
+            <div className="text-xs text-[#6b6259]">{tr('отдельный платёж', 'separate payment')}</div>
           </div>
         </div>
       </div>
@@ -235,10 +246,10 @@ export function PostPaymentUpsell({
           disabled={busy}
           onClick={finish}
         >
-          Не нужно
+          {tr('Не нужно', 'No thanks')}
         </button>
         <button type="button" className={`${primaryButtonClass} sm:w-auto`} style={primaryButtonStyle} disabled={busy} onClick={buyStems}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Да, добавить'}
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tr('Да, добавить', 'Yes, add it')}
         </button>
       </div>
     </UpsellCard>
@@ -247,9 +258,10 @@ export function PostPaymentUpsell({
 
 /** Экран придержанной доставки: песня готова, но срок ещё не вышел (шаг 8/13). */
 export function DeliveryHeldScreen({ deliverAt, accent }: { deliverAt: string | null; accent: string }) {
+  const tr = useTr()
   const at = deliverAt ? new Date(deliverAt) : null
   const time = at && !Number.isNaN(at.getTime())
-    ? at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    ? at.toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' })
     : null
 
   return (
@@ -258,11 +270,17 @@ export function DeliveryHeldScreen({ deliverAt, accent }: { deliverAt: string | 
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ backgroundColor: accent + '15' }}>
           <Sparkles className="h-8 w-8" style={{ color: accent }} />
         </div>
-        <h1 className="font-[Prata,serif] text-[22px] text-[#151210]">Песня в работе</h1>
+        <h1 className="font-[Prata,serif] text-[22px] text-[#151210]">{tr('Песня в работе', 'Your song is in progress')}</h1>
         <p className="mt-3 text-sm leading-relaxed text-[#6b6259]">
           {time
-            ? `Пришлём её на email примерно к ${time}. Страница обновится сама.`
-            : 'Пришлём её на email, как только будет готова. Страница обновится сама.'}
+            ? tr(
+                `Пришлём её на email примерно к ${time}. Страница обновится сама.`,
+                `We'll email it around ${time}. This page will update by itself.`,
+              )
+            : tr(
+                'Пришлём её на email, как только будет готова. Страница обновится сама.',
+                "We'll email it as soon as it's ready. This page will update by itself.",
+              )}
         </p>
       </div>
     </div>

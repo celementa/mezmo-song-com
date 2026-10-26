@@ -493,6 +493,12 @@ func publicDiscountAmount(code string, basePrice int) (int, bool) {
 // body. The order is created as "paid" by default; callers apply their own
 // payment-status rules (e.g. handleOrdersDraft flips to "pending" when YooKassa
 // is configured).
+// requestLang — язык страницы, с которой пришёл запрос: фронт шлёт его
+// заголовком X-Site-Lang со всех POST (frontend/src/lib/http.ts).
+func requestLang(r *http.Request) sql.NullString {
+	return sql.NullString{String: store.NormalizeLang(r.Header.Get("X-Site-Lang")), Valid: true}
+}
+
 func buildOrderFromBody(cfg config.Config, body map[string]any) store.Order {
 	id := newOrderID()
 	payloadBytes, _ := json.Marshal(body)
@@ -541,6 +547,7 @@ func (s *Server) handleOrdersDraft(w http.ResponseWriter, r *http.Request) {
 	}
 
 	o := buildOrderFromBody(s.Config, body)
+	o.Language = requestLang(r)
 
 	// Плечо A/B-теста и цена берутся от сессии на сервере: sessionId — то же
 	// самое значение, что уходит в /api/public/track, а цена из тела запроса не
@@ -721,6 +728,7 @@ func (s *Server) triggerRelay(ctx context.Context, orderID string) {
 		Story:           getStr("story"),
 		Relationship:    getStr("relationship"),
 		RecipientGender: recipientGender(payload),
+		Language:        o.Lang(),
 	})
 	if err != nil {
 		log.Printf("relay error for order %s: %v", orderID, err)
@@ -936,9 +944,9 @@ func (s *Server) handleInitiatePayment(w http.ResponseWriter, r *http.Request) {
 	// У v1 тем же способом отрезался весь хвост после оплаты (подписка, стемы,
 	// «готово»). Воронка сама умеет продолжить с нужного шага по ?order=.
 	ref := publicOrderRef(s.Config.WebhookSecret, id)
-	returnURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/thanks?orderId=" + ref
+	returnURL := s.siteURL(o.Lang()) + "/thanks?orderId=" + ref
 	if o.Flow.Valid && o.Flow.String != "" {
-		returnURL = s.flowResumeURL(ref) + "&paid=1"
+		returnURL = s.flowResumeURL(o.Lang(), ref) + "&paid=1"
 	} else if o.FlowVariant.Valid && o.FlowVariant.String != "" {
 		// Вариант 1 (/config): шаги после оплаты — апсейл подписки, стемы,
 		// готово — живут на странице заказа. Промежуточный /thanks с кнопкой
@@ -1092,7 +1100,7 @@ func (s *Server) handlePublicOrderStatus(w http.ResponseWriter, r *http.Request)
 		"xenditInvoiceUrl":    nullStr(invURL),
 		"recipientName":       jsonRecipient(o.InputPayloadJSON),
 		"createdAt":           o.CreatedAt.UTC().Format(time.RFC3339Nano),
-		"config":              deliveryCfg(),
+		"config":              deliveryCfg(o.Lang()),
 		"confirmedAt":         o.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"deliveryScheduledAt": nullStr(o.DeliverAfter.String),
 		"deliveryDelayHours":  int(store.DeliveryDelay(ctx, s.DB).Hours()),
@@ -1107,7 +1115,7 @@ func (s *Server) handlePublicOrderStatus(w http.ResponseWriter, r *http.Request)
 		"subscribed":               o.SubscriptionID.Valid && o.SubscriptionID.String != "",
 		"savedCard":                o.YooMethodID.Valid && o.YooMethodID.String != "",
 		"revisionWaitHours":        24,
-		"orderProcessingPage":      map[string]string{"headline": "Готовим вашу песню", "subtitle": "Это может занять несколько минут."},
+		"orderProcessingPage":      orderProcessingPage(o.Lang()),
 		"processingUpsellItems":    []any{},
 		"revisionUpsell":           nil,
 		"purchasedUpsells":         []any{},
@@ -1217,7 +1225,7 @@ func (s *Server) handlePublicOrderContent(w http.ResponseWriter, r *http.Request
 			"hasTestimonial":      false,
 			"testimonialStatus":   nil,
 			"revisionSubmittedAt": nil,
-			"language":            "ru",
+			"language":            o.Lang(),
 			"musicStyle":          "",
 			"voiceStyle":          "",
 		})
@@ -1385,6 +1393,7 @@ func (s *Server) handleRegenerate(w http.ResponseWriter, r *http.Request) {
 			Story:           story,
 			Relationship:    getStr("relationship"),
 			RecipientGender: recipientGender(payload),
+			Language:        o.Lang(),
 		}
 		var lyrics string
 		var err error
@@ -1834,7 +1843,7 @@ func (s *Server) applyOrderPaid(ctx context.Context, prev store.Order, orderID, 
 		// придержана, уходит обычная квитанция, а письмо о песне отправит
 		// колбэк Kie.ai или планировщик.
 		go func(email string) {
-			if s.deliverIfReady(context.Background(), orderID, src, "Спасибо, оплата получена!") {
+			if s.deliverIfReady(context.Background(), orderID, src, paidIntro(store.OrderLanguage(context.Background(), s.DB, orderID))) {
 				return
 			}
 			if email == "" {
@@ -1849,17 +1858,25 @@ func (s *Server) applyOrderPaid(ctx context.Context, prev store.Order, orderID, 
 			// человек оплатил и ушёл, песни не будет, пока он не допишет
 			// историю — ссылка ведёт на продолжение воронки, а не на
 			// страницу заказа, где анкеты нет.
+			lang := store.OrderLanguage(context.Background(), s.DB, orderID)
+			en := lang == store.LangEN
 			link := s.publicOrderURL(orderID)
 			vars := map[string]string{"order_url": link, "needs_story": ""}
-			body := "Спасибо! Заказ принят.\nСтраница заказа: " + link
+			subject, body := "Оплата получена", "Спасибо! Заказ принят.\nСтраница заказа: "+link
+			if en {
+				subject, body = "Payment received", "Thank you! Your order has been received.\nOrder page: "+link
+			}
 			if o, err := store.GetOrder(context.Background(), s.DB, orderID); err == nil && o.Flow.Valid && !hasSongConfig(o) {
-				link = s.flowResumeURL(publicOrderRef(s.Config.WebhookSecret, orderID))
+				link = s.flowResumeURL(lang, publicOrderRef(s.Config.WebhookSecret, orderID))
 				vars["needs_story"] = "1"
 				body = "Спасибо, оплата получена!\nОсталось рассказать историю для песни — продолжите здесь: " + link
+				if en {
+					body = "Thank you, your payment has been received!\nAll that's left is to tell us the story for your song — continue here: " + link
+				}
 			}
 			// Ссылка готовая, а не на выбор в шаблоне: условия simple в ссылках не работают.
 			vars["next_url"] = link
-			if err := s.sendEmail(context.Background(), emailPaymentReceived, emailTarget{OrderID: orderID}, email, "Оплата получена", body, vars); err != nil {
+			if err := s.sendEmail(context.Background(), emailPaymentReceived, emailTarget{OrderID: orderID}, email, subject, body, vars); err != nil {
 				log.Printf("[pay] %s order=%s: receipt email err=%v", src, orderID, err)
 			} else {
 				log.Printf("[pay] %s order=%s: receipt email sent to=%s", src, orderID, email)
@@ -2697,6 +2714,13 @@ func priceFromConfig(c config.Config) int {
 	return 25
 }
 
+func orderProcessingPage(lang string) map[string]string {
+	if lang == store.LangEN {
+		return map[string]string{"headline": "Creating your song", "subtitle": "This may take a few minutes."}
+	}
+	return map[string]string{"headline": "Готовим вашу песню", "subtitle": "Это может занять несколько минут."}
+}
+
 func originalPriceFromConfig(c config.Config) int {
 	if v := strings.TrimSpace(os.Getenv("ORIGINAL_AMOUNT_RUBLES")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -2706,7 +2730,22 @@ func originalPriceFromConfig(c config.Config) int {
 	return 75
 }
 
-func deliveryCfg() map[string]string {
+// deliveryCfg — тексты страницы заказа на языке заказа.
+func deliveryCfg(lang string) map[string]string {
+	if lang == store.LangEN {
+		return map[string]string{
+			"pageTitle":          "Your song",
+			"headerText":         "Thank you for your order!",
+			"processingMessage":  "Generating your track…",
+			"downloadButtonText": "Download MP3",
+			"lyricsButtonText":   "Lyrics",
+			"successMessage":     "Your personal song is ready!",
+			"accentColor":        "#D4AF37",
+			"logoUrl":            "",
+			"trackSubtitleText":  "",
+			"unlockButtonText":   "",
+		}
+	}
 	return map[string]string{
 		"pageTitle":          "Ваша песня",
 		"headerText":         "Спасибо за заказ!",

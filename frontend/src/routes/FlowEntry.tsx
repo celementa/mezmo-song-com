@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react'
 
 import { useFlowConfig } from '@/flow/useFlowConfig'
 import { FlowRoute } from '@/flow/FlowRoute'
+import { localePath, useTr } from '@/lib/lang'
 
 /**
  * Вход в /config: сервер решает, какое плечо A/B-теста показать этой сессии.
@@ -16,6 +17,7 @@ export function FlowEntry() {
   const state = useFlowConfig()
   const { pathname, search } = useLocation()
   const navigate = useNavigate()
+  const tr = useTr()
 
   // Назначенное плечо показывается в адресе (/config?arm=variant1-990): команда
   // видит, куда попала, и ссылку можно скопировать. Сервер это же плечо
@@ -48,14 +50,18 @@ export function FlowEntry() {
   if (state.status === 'unavailable') {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
-        <p className="text-lg font-semibold text-gray-800">Не удалось загрузить оформление заказа</p>
-        <p className="mt-2 text-sm text-gray-600">Проверьте соединение и обновите страницу.</p>
+        <p className="text-lg font-semibold text-gray-800">
+          {tr('Не удалось загрузить оформление заказа', "Couldn't load checkout")}
+        </p>
+        <p className="mt-2 text-sm text-gray-600">
+          {tr('Проверьте соединение и обновите страницу.', 'Check your connection and refresh the page.')}
+        </p>
         <button
           type="button"
           onClick={() => window.location.reload()}
           className="mt-6 rounded-lg bg-[var(--theme-accent,#D4AF37)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90"
         >
-          Обновить
+          {tr('Обновить', 'Refresh')}
         </button>
       </div>
     )
@@ -65,7 +71,7 @@ export function FlowEntry() {
   // ?v закрепится там через variant.ts, так что человек останется в своём
   // варианте и при прямом возврате на /create.
   if (state.config.route) {
-    return <Navigate to={state.config.route} replace />
+    return <Navigate to={localePath(state.config.route)} replace />
   }
 
   return <FlowRoute config={state.config} sessionId={state.sessionId} />

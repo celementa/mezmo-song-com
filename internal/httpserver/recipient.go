@@ -33,6 +33,23 @@ var relationshipGender = map[string]string{
 	"подруга": genderFemale,
 	"любимая": genderFemale,
 	"любимый": genderMale,
+	// Английская версия сайта (/en) шлёт подписи чипов по-английски.
+	"husband":     genderMale,
+	"boyfriend":   genderMale,
+	"dad":         genderMale,
+	"father":      genderMale,
+	"son":         genderMale,
+	"brother":     genderMale,
+	"grandpa":     genderMale,
+	"grandfather": genderMale,
+	"wife":        genderFemale,
+	"girlfriend":  genderFemale,
+	"mom":         genderFemale,
+	"mother":      genderFemale,
+	"daughter":    genderFemale,
+	"sister":      genderFemale,
+	"grandma":     genderFemale,
+	"grandmother": genderFemale,
 }
 
 // recipientGender возвращает пол получателя песни: genderMale, genderFemale или

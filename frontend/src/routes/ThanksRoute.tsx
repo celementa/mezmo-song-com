@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { apiGet } from '@/lib/http'
+import { localePath, useTr } from '@/lib/lang'
 import { runOrderPurchaseTracking, type PurchaseTrackingOrderStatus } from '@/features/analytics/purchaseTracking'
 
 // Сколько раз и с каким шагом переспрашиваем статус, пока вебхук ЮKassa
@@ -19,6 +20,7 @@ type PageState = 'checking' | 'paid' | 'waiting' | 'notfound'
  */
 export function ThanksRoute() {
   const [searchParams] = useSearchParams()
+  const tr = useTr()
   const orderId = searchParams.get('orderId')
   const [state, setState] = useState<PageState>(() => (orderId ? 'checking' : 'notfound'))
   const trackingFired = useRef(false)
@@ -90,7 +92,7 @@ export function ThanksRoute() {
           <div className="thanks-rise">
             <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-[#EFE7D6] border-t-[#B5952F]" />
             <p className="mt-6 text-sm font-semibold uppercase tracking-[0.14em] text-[#B5952F]">
-              Проверяем оплату
+              {tr('Проверяем оплату', 'Checking your payment')}
             </p>
           </div>
         )}
@@ -109,25 +111,30 @@ export function ThanksRoute() {
             </div>
 
             <p className="thanks-rise mt-8 text-xs font-bold uppercase tracking-[0.18em] text-[#B5952F]" style={{ animationDelay: '0.15s' }}>
-              Оплата прошла
+              {tr('Оплата прошла', 'Payment received')}
             </p>
             <h1 className="thanks-rise mt-3 text-3xl font-bold leading-tight text-gray-900 sm:text-4xl" style={{ animationDelay: '0.25s' }}>
-              Спасибо! Ваша песня уже пишется
+              {tr('Спасибо! Ваша песня уже пишется', 'Thank you! Your song is being written')}
             </h1>
             <p className="thanks-rise mt-4 text-base leading-relaxed text-gray-600" style={{ animationDelay: '0.35s' }}>
-              Мы приняли заказ и передали вашу историю в работу. Ссылка на готовую
-              песню придёт на почту — а следить за процессом можно прямо сейчас.
+              {tr(
+                'Мы приняли заказ и передали вашу историю в работу. Ссылка на готовую песню придёт на почту — а следить за процессом можно прямо сейчас.',
+                "We've received your order and passed your story to our team. The link to your finished song will arrive by email — you can follow the progress right now.",
+              )}
             </p>
 
             <div className="thanks-rise mt-8" style={{ animationDelay: '0.45s' }}>
               <Link
-                to={`/order/${encodeURIComponent(orderId ?? '')}`}
+                to={localePath(`/order/${encodeURIComponent(orderId ?? '')}`)}
                 className="inline-block rounded-xl bg-[#E11D48] px-8 py-3.5 text-base font-semibold text-white shadow-[0_6px_20px_rgba(225,29,72,0.3)] transition-transform hover:scale-[1.02] hover:opacity-95"
               >
-                Открыть страницу заказа
+                {tr('Открыть страницу заказа', 'Open order page')}
               </Link>
               <p className="mt-4 text-xs text-gray-400">
-                Страница заказа сохранится в письме — её можно открыть позже с любого устройства.
+                {tr(
+                  'Страница заказа сохранится в письме — её можно открыть позже с любого устройства.',
+                  'The order page is saved in your email — you can open it later from any device.',
+                )}
               </p>
             </div>
           </>
@@ -136,17 +143,19 @@ export function ThanksRoute() {
         {state === 'waiting' && (
           <div className="thanks-rise">
             <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-[#EFE7D6] border-t-[#B5952F]" />
-            <h1 className="mt-6 text-2xl font-bold text-gray-900">Ждём подтверждение оплаты</h1>
+            <h1 className="mt-6 text-2xl font-bold text-gray-900">{tr('Ждём подтверждение оплаты', 'Waiting for payment confirmation')}</h1>
             <p className="mt-3 text-sm leading-relaxed text-gray-600">
-              Банк ещё не подтвердил платёж — обычно это занимает меньше минуты.
-              Страница заказа уже доступна, подтверждение появится там автоматически.
+              {tr(
+                'Банк ещё не подтвердил платёж — обычно это занимает меньше минуты. Страница заказа уже доступна, подтверждение появится там автоматически.',
+                'The bank has not confirmed the payment yet — this usually takes less than a minute. The order page is already available, and the confirmation will appear there automatically.',
+              )}
             </p>
             {orderId && (
               <Link
-                to={`/order/${encodeURIComponent(orderId)}`}
+                to={localePath(`/order/${encodeURIComponent(orderId)}`)}
                 className="mt-6 inline-block rounded-xl border border-[#E11D48] px-6 py-3 text-sm font-semibold text-[#E11D48] transition-colors hover:bg-[#E11D48] hover:text-white"
               >
-                Перейти к заказу
+                {tr('Перейти к заказу', 'Go to order')}
               </Link>
             )}
           </div>
@@ -154,15 +163,18 @@ export function ThanksRoute() {
 
         {state === 'notfound' && (
           <div className="thanks-rise">
-            <h1 className="text-2xl font-bold text-gray-900">Заказ не найден</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{tr('Заказ не найден', 'Order not found')}</h1>
             <p className="mt-3 text-sm text-gray-600">
-              Проверьте ссылку из письма — или напишите нам, мы поможем.
+              {tr(
+                'Проверьте ссылку из письма — или напишите нам, мы поможем.',
+                'Check the link from your email, or contact us and we will help.',
+              )}
             </p>
             <Link
-              to="/"
+              to={localePath('/')}
               className="mt-6 inline-block rounded-xl bg-[#E11D48] px-6 py-3 text-sm font-semibold text-white hover:opacity-95"
             >
-              На главную
+              {tr('На главную', 'Back to home')}
             </Link>
           </div>
         )}

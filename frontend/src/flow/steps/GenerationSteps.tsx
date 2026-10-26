@@ -9,11 +9,14 @@ import { Loader2, Lock, Pause, Play, Zap } from 'lucide-react'
 import { GOLD, StepShell } from '@/routes/create/StepShell'
 import type { ShellPassthrough } from './BriefSteps'
 import { fmtCurrency } from '@/routes/config/utils'
+import { useLang, useTr } from '@/lib/lang'
+import { answerText } from '../types'
 
 /** Шаг 6 — «Пишем вашу песню…». Опрос статуса ведёт FlowRoute. */
 export function GeneratingStep({ shell, error, onRetry }: { shell: ShellPassthrough; error: string | null; onRetry: () => void }) {
+  const tr = useTr()
   return (
-    <StepShell {...shell} canGoBack={false} eyebrow="Готовим" hideNav>
+    <StepShell {...shell} canGoBack={false} eyebrow={tr('Готовим', 'Getting ready')} hideNav>
       <div className="flex flex-col items-center py-10 text-center">
         {error ? (
           <>
@@ -23,7 +26,7 @@ export function GeneratingStep({ shell, error, onRetry }: { shell: ShellPassthro
               onClick={onRetry}
               className="mt-4 rounded-xl border border-[#E7DAC5] bg-white px-4 py-3 text-sm font-semibold text-[#8a6621] transition hover:bg-[#FCF6EA]"
             >
-              Попробовать снова
+              {tr('Попробовать снова', 'Try again')}
             </button>
           </>
         ) : (
@@ -32,8 +35,8 @@ export function GeneratingStep({ shell, error, onRetry }: { shell: ShellPassthro
               <span className="absolute inset-0 animate-ping rounded-full opacity-30" style={{ background: GOLD }} />
               <Loader2 className="h-8 w-8 animate-spin text-[#B9852E]" />
             </div>
-            <h2 className="mt-6 font-[Prata,serif] text-[22px] text-[#151210]">Пишем вашу песню…</h2>
-            <p className="mt-2 text-sm text-[#6b6259]">Обычно занимает около минуты.</p>
+            <h2 className="mt-6 font-[Prata,serif] text-[22px] text-[#151210]">{tr('Пишем вашу песню…', 'Writing your song…')}</h2>
+            <p className="mt-2 text-sm text-[#6b6259]">{tr('Обычно занимает около минуты.', 'This usually takes about a minute.')}</p>
           </>
         )}
       </div>
@@ -61,6 +64,8 @@ export function PreviewStep({
   occasion: string
   onUnlock: () => void
 }) {
+  const tr = useTr()
+  const lang = useLang()
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState(false)
 
@@ -83,15 +88,17 @@ export function PreviewStep({
     void audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
   }
 
-  const title = [recipientName && `Для ${recipientName}`, occasion].filter(Boolean).join(' — ')
+  const title = [recipientName && `${tr('Для', 'For')} ${recipientName}`, occasion && answerText(occasion, lang)]
+    .filter(Boolean)
+    .join(' — ')
 
   return (
     <StepShell
       {...shell}
       canGoBack={false}
-      eyebrow="Готово"
-      headline="Ваша песня готова к превью."
-      primaryLabel="Открыть полностью"
+      eyebrow={tr('Готово', 'Ready')}
+      headline={tr('Ваша песня готова к превью.', 'Your song is ready to preview.')}
+      primaryLabel={tr('Открыть полностью', 'Unlock the full song')}
       onPrimary={onUnlock}
     >
       <div className="rounded-2xl bg-[#151210] p-4">
@@ -100,25 +107,28 @@ export function PreviewStep({
             type="button"
             onClick={toggle}
             disabled={!previewUrl}
-            aria-label={playing ? 'Пауза' : 'Слушать отрывок'}
+            aria-label={playing ? tr('Пауза', 'Pause') : tr('Слушать отрывок', 'Play the preview')}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#151210] transition hover:opacity-90 active:scale-95 disabled:opacity-40"
             style={{ background: GOLD }}
           >
             {playing ? <Pause className="h-4 w-4" fill="currentColor" /> : <Play className="ml-0.5 h-4 w-4" fill="currentColor" />}
           </button>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold text-white">{title || 'Ваша песня'}</p>
-            <p className="text-xs text-white/60">Отрывок 15 секунд</p>
+            <p className="truncate text-sm font-bold text-white">{title || tr('Ваша песня', 'Your song')}</p>
+            <p className="text-xs text-white/60">{tr('Отрывок 15 секунд', '15-second preview')}</p>
           </div>
           <span className="flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>
-            <Lock className="h-3 w-3" /> закрыто
+            <Lock className="h-3 w-3" /> {tr('закрыто', 'locked')}
           </span>
           {previewUrl && <audio ref={audioRef} src={previewUrl} preload="none" />}
         </div>
       </div>
 
       <p className="mt-4 text-xs leading-relaxed text-[#9c9186]">
-        Делимся 15-секундным отрывком — самый трогательный момент трека.
+        {tr(
+          'Делимся 15-секундным отрывком — самый трогательный момент трека.',
+          "Here's a 15-second excerpt — the most touching moment of the track.",
+        )}
       </p>
     </StepShell>
   )
@@ -157,17 +167,22 @@ export function SpeedupStep({
   onAccept: () => void
   onSkip: () => void
 }) {
+  const tr = useTr()
+  const hoursEn = delayHours === 1 ? '1 hour' : `${delayHours} hours`
   return (
     <StepShell
       {...shell}
       canGoBack={false}
       busy={busy}
-      eyebrow="Перед оплатой"
-      headline="Хотите быстрее?"
-      subhead={`Обычно песня готова за ${hoursText(delayHours)}. Добавьте ускорение — и получите её за 10–30 минут.`}
-      primaryLabel="Добавить и продолжить"
+      eyebrow={tr('Перед оплатой', 'Before you pay')}
+      headline={tr('Хотите быстрее?', 'Want it faster?')}
+      subhead={tr(
+        `Обычно песня готова за ${hoursText(delayHours)}. Добавьте ускорение — и получите её за 10–30 минут.`,
+        `Usually your song is ready in ${hoursEn}. Add a rush and get it in 10–30 minutes.`,
+      )}
+      primaryLabel={tr('Добавить и продолжить', 'Add and continue')}
       onPrimary={onAccept}
-      secondaryLabel="Не нужно"
+      secondaryLabel={tr('Не нужно', 'No thanks')}
       onSecondary={onSkip}
     >
       <div className="rounded-2xl border border-[#EFE4D2] bg-[#FDFBF7] p-4">
@@ -177,7 +192,9 @@ export function SpeedupStep({
           </span>
           <div>
             <div className="text-sm font-bold text-[#151210]">+{fmtCurrency(price)}</div>
-            <div className="text-xs text-[#6b6259]">итого {fmtCurrency(basePrice + price)}</div>
+            <div className="text-xs text-[#6b6259]">
+              {tr('итого', 'total')} {fmtCurrency(basePrice + price)}
+            </div>
           </div>
         </div>
       </div>

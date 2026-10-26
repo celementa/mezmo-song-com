@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTr } from '@/lib/lang'
 
 function sanitizeHtml(html: string): string {
   return html.replace(/<\/?(?!strong|em|br\s*\/?)(?!span\b)([a-z][a-z0-9]*)\b[^>]*>/gi, '')
@@ -15,8 +16,13 @@ type Props = {
 
 export function FaqSection({
   items,
-  sectionHeadline = 'Частые <span class="text-[var(--theme-accent-text)] italic">вопросы</span>',
+  sectionHeadline: sectionHeadlineProp,
 }: Props) {
+  const tr = useTr()
+  const sectionHeadline = sectionHeadlineProp ?? tr(
+    'Частые <span class="text-[var(--theme-accent-text)] italic">вопросы</span>',
+    'Frequently asked <span class="text-[var(--theme-accent-text)] italic">questions</span>',
+  )
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
   return (

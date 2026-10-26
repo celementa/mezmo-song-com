@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ShieldCheck, Check } from 'lucide-react'
+import { useTr } from '@/lib/lang'
 
 function sanitizeHtml(html: string): string {
   return html.replace(/<\/?(?!strong|em|br\s*\/?)(?!span\b)([a-z][a-z0-9]*)\b[^>]*>/gi, '')
@@ -16,12 +17,20 @@ type Props = {
 
 export function GuaranteeSection({
   deliveryEtaShort,
-  badgeText = 'Без риска',
-  headline = 'Гарантия эмоций',
-  description = 'Если песня не тронула — <strong class="text-gray-900">переделаем бесплатно</strong> или <strong class="text-gray-900">вернём полную сумму</strong>. Без лишних вопросов.',
-  badges = ['Правки бесплатно', 'Полный возврат'],
+  badgeText: badgeTextProp,
+  headline: headlineProp,
+  description: descriptionProp,
+  badges: badgesProp,
   videoUrl = '/laguin-studio.mp4',
 }: Props) {
+  const tr = useTr()
+  const badgeText = badgeTextProp ?? tr('Без риска', 'No risk')
+  const headline = headlineProp ?? tr('Гарантия эмоций', 'Guaranteed to move them')
+  const description = descriptionProp ?? tr(
+    'Если песня не тронула — <strong class="text-gray-900">переделаем бесплатно</strong> или <strong class="text-gray-900">вернём полную сумму</strong>. Без лишних вопросов.',
+    'If the song doesn\'t move them, we\'ll <strong class="text-gray-900">remake it for free</strong> or <strong class="text-gray-900">refund the full amount</strong>. No questions asked.',
+  )
+  const badges = badgesProp ?? [tr('Правки бесплатно', 'Free revisions'), tr('Полный возврат', 'Full refund')]
   const videoRef = useRef<HTMLDivElement>(null)
   const [videoVisible, setVideoVisible] = useState(false)
 
@@ -57,7 +66,7 @@ export function GuaranteeSection({
             {badges.map((badge, i) => (
               <span key={i} className="flex items-center gap-1"><Check className="h-4 w-4" /> {badge}</span>
             ))}
-            <span className="flex items-center gap-1"><Check className="h-4 w-4" /> Pengiriman {deliveryEtaShort}</span>
+            <span className="flex items-center gap-1"><Check className="h-4 w-4" /> {tr(`Доставка ${deliveryEtaShort}`, `Delivered in ${deliveryEtaShort}`)}</span>
           </div>
         </div>
       </div>

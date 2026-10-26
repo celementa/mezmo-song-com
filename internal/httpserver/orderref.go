@@ -87,6 +87,16 @@ func (s *Server) resolveOrderID(ctx context.Context, ref string) (id string, ok 
 
 // publicOrderURL — ссылка на страницу заказа для писем и return_url.
 func (s *Server) publicOrderURL(id string) string {
-	return strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/order/" +
-		publicOrderRef(s.Config.WebhookSecret, id)
+	lang := store.OrderLanguage(context.Background(), s.DB, id)
+	return s.siteURL(lang) + "/order/" + publicOrderRef(s.Config.WebhookSecret, id)
+}
+
+// siteURL — корень сайта на языке lang без завершающего слэша: английская
+// версия живёт под /en (frontend/src/lib/lang.ts).
+func (s *Server) siteURL(lang string) string {
+	base := strings.TrimSuffix(s.Config.PublicAppURL, "/")
+	if lang == store.LangEN {
+		return base + "/en"
+	}
+	return base
 }

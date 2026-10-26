@@ -1,4 +1,5 @@
 import { apiGet } from '@/lib/http'
+import { getLang } from '@/lib/lang'
 
 import { executePixelScript } from './MetaPixel'
 import { executeTikTokScript } from './TikTokPixel'
@@ -102,6 +103,7 @@ export async function fireOrderPurchaseTracking(
     value: price,
     currency: 'USD',
     customer_type: customerType,
+    language: getLang(),
     items: [{ item_id: productId, item_name: productName, price, quantity: 1, item_category: 'Song' }],
   })
 

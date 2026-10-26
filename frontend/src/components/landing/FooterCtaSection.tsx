@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { localePath, useTr } from '@/lib/lang'
 
 function sanitizeHtml(html: string): string {
   return html.replace(/<\/?(?!strong|em|br\s*\/?)(?!span\b)([a-z][a-z0-9]*)\b[^>]*>/gi, '')
@@ -28,10 +29,13 @@ export function FooterCtaSection({
   showPriceInButton = true,
   themeSlug,
   securityBadge = '',
-  quotaLine = 'Осталось бесплатных слотов: 11',
-  ctaButtonText = 'Создать свою песню',
+  quotaLine: quotaLineProp,
+  ctaButtonText: ctaButtonTextProp,
   showCtaButton = true,
 }: Props) {
+  const tr = useTr()
+  const quotaLine = quotaLineProp ?? tr('Осталось бесплатных слотов: 11', '11 free slots left')
+  const ctaButtonText = ctaButtonTextProp ?? tr('Создать свою песню', 'Create your song')
   return (
     <section className="text-center space-y-6 pb-12">
       <h2 className="font-serif text-3xl sm:text-4xl font-bold text-gray-900">{headline}</h2>
@@ -40,7 +44,7 @@ export function FooterCtaSection({
       {showCtaButton && (
         <div className="pt-4">
           <Button asChild size="lg" className="h-14 px-10 rounded-full bg-[var(--theme-button)] hover:bg-[var(--theme-button)] text-[var(--theme-button-text)] text-lg font-bold shadow-2xl shadow-[var(--theme-accent-soft)] hover:opacity-90 transition-all">
-            <Link to={themeSlug ? `/${themeSlug}/config` : '/config'} className="flex items-center gap-2">
+            <Link to={localePath(themeSlug ? `/${themeSlug}/config` : '/config')} className="flex items-center gap-2">
               <span>{ctaButtonText}{showPriceInButton ? ` — ${fmtCurrency(paymentAmount)}` : ''}</span>
               {showPriceInButton && <span className="text-xs sm:text-sm font-normal line-through opacity-80 text-[var(--theme-accent-soft)]">{fmtCurrency(originalAmount)}</span>}
             </Link>

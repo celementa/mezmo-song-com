@@ -1,8 +1,10 @@
 import { useLandingData } from '@/hooks/useLandingData'
+import { useTr } from '@/lib/lang'
 import { getTemplate } from '@/templates'
 
 export function LandingRoute() {
   const data = useLandingData()
+  const tr = useTr()
   // Until /settings resolves the template, paint the hero poster immediately
   // (it's preloaded in index.html) so the LCP/FCP doesn't wait on the API.
   if (!data.design) {
@@ -14,7 +16,7 @@ export function LandingRoute() {
           className="text-center text-xs font-bold uppercase tracking-widest px-4 pt-4"
           style={{ color: '#B5952F' }}
         >
-          Подарок, который трогает душу
+          {tr('Подарок, который трогает душу', 'A gift that touches the heart')}
         </p>
         <div className="px-4 pt-4">
           <div

@@ -19,7 +19,7 @@ const editTestLyrics = "[Куплет 1]\nПервая строка\nВтора�
 // которого правки не работали.
 func TestBuildEditPromptCarriesLyricsAndInstruction(t *testing.T) {
 	const instruction = "замени вторую строку на «Новая строка»"
-	got := buildEditPrompt(editTestLyrics, instruction)
+	got := buildEditPrompt("ru", editTestLyrics, instruction)
 
 	if !strings.Contains(got, editTestLyrics) {
 		t.Fatalf("промпт не содержит текущий текст песни:\n%s", got)
@@ -93,5 +93,21 @@ func TestTriggerEditSendsCurrentLyricsAndReturnsEditedText(t *testing.T) {
 	}
 	if !strings.Contains(gotPrompt, "замени вторую строку") {
 		t.Fatalf("в OpenRouter не ушла просьба пользователя:\n%s", gotPrompt)
+	}
+}
+
+// Английский заказ пишется по промптам data/prompts/en: текст песни и правка на
+// английском, без русских пометок разделов.
+func TestPromptsByLanguage(t *testing.T) {
+	en := buildPrompt(OrderPayload{Recipient: "Emily", Language: "en"})
+	if !strings.Contains(en, "English") || strings.Contains(en, "Куплет") {
+		t.Fatalf("EN lyrics prompt is not English:\n%s", en)
+	}
+	ru := buildPrompt(OrderPayload{Recipient: "Аня"})
+	if !strings.Contains(ru, "русск") {
+		t.Fatalf("RU lyrics prompt lost Russian:\n%s", ru)
+	}
+	if edit := buildEditPrompt("en", "[Verse 1]\nline", "change it"); !strings.Contains(edit, "[Verse 1]") || strings.Contains(edit, "Текст песни") {
+		t.Fatalf("EN edit prompt:\n%s", edit)
 	}
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { localePath, useTr } from '@/lib/lang'
 
 const LANDING_AUDIO_EVENT = 'landing-audio-playing'
 const SOURCE_HERO = 'hero'
@@ -37,9 +38,11 @@ export function HeroPlayerInline({
   authorAvatarUrl,
   stopAfterOnePlay,
   useVideoAudio,
-  ctaButtonText = 'Создать свою песню',
+  ctaButtonText: ctaButtonTextProp,
   ctaLink = '/config',
 }: Props) {
+  const tr = useTr()
+  const ctaButtonText = ctaButtonTextProp ?? tr('Создать свою песню', 'Create your song')
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const [finished, setFinished] = useState(false)
@@ -141,7 +144,7 @@ export function HeroPlayerInline({
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" />
           <Link
-            to={ctaLink}
+            to={localePath(ctaLink)}
             className="relative z-10 rounded-full bg-[var(--theme-accent)] px-8 py-4 text-white text-lg sm:text-xl font-bold shadow-lg hover:scale-105 transition-transform"
           >
             {ctaButtonText}

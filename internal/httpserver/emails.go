@@ -185,6 +185,10 @@ type emailTarget struct {
 // попытку в журнал. Проверку SMTP_HOST оставляет вызывающим — они по-разному
 // логируют её отсутствие, а в журнал dev-стенда без почты писать нечего.
 //
+// Язык письма — язык заказа (target.OrderID): английскому заказу нужен
+// английский шаблон (templateIdEn на /admin/emails), без него уходит текст,
+// который вызывающий уже собрал на языке заказа.
+//
 // Если на /admin/emails письму задан шаблон Unisender Go, оно уходит по нему
 // (тема и текст из конструктора, vars — подстановками), иначе — subject и body
 // через SMTP. Шаблон не принят (удалён, опечатка в id, сбой API) — письмо всё
@@ -205,12 +209,16 @@ func (s *Server) sendEmail(ctx context.Context, kind string, target emailTarget,
 	} else {
 		// Через Unisender Go письмо несёт ключ строки журнала: по нему вебхук Go
 		// дописывает «доставлено/открыто» (handleUnisenderGoWebhook).
+		lang := store.LangRU
+		if target.OrderID != "" {
+			lang = store.OrderLanguage(ctx, s.DB, target.OrderID)
+		}
 		var tr mail.Tracking
 		if s.Config.SMTPUnisenderGo {
-			tr = mail.Tracking{Ref: randomRef(), Tag: kind}
+			tr = mail.Tracking{Ref: randomRef(), Tag: kind, Language: lang}
 		}
 		sent := false
-		if templateID := store.EmailTemplateID(ctx, s.DB, kind); templateID != "" && s.Config.SMTPUnisenderGo {
+		if templateID := store.EmailTemplateID(ctx, s.DB, kind, lang); templateID != "" && s.Config.SMTPUnisenderGo {
 			err = sendTemplateFunc(s.Config, to, templateID, s.emailVars(vars), tr)
 			switch {
 			case err == nil:
@@ -262,8 +270,9 @@ func (s *Server) adminEmailKinds(ctx context.Context) []map[string]any {
 		out = append(out, map[string]any{
 			"key": k.Key, "group": k.Group, "title": k.Title, "subject": k.Subject,
 			"when": k.When, "why": k.Why, "locked": k.Locked, "vars": k.Vars,
-			"enabled":    k.Locked || store.EmailEnabled(ctx, s.DB, k.Key),
-			"templateId": store.EmailTemplateID(ctx, s.DB, k.Key),
+			"enabled":      k.Locked || store.EmailEnabled(ctx, s.DB, k.Key),
+			"templateId":   store.EmailTemplateID(ctx, s.DB, k.Key, store.LangRU),
+			"templateIdEn": store.EmailTemplateID(ctx, s.DB, k.Key, store.LangEN),
 		})
 	}
 	return out
@@ -288,15 +297,16 @@ func (s *Server) handleAdminEmailsGet(w http.ResponseWriter, r *http.Request) {
 var templateIDRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // handleAdminEmailsPut меняет тумблер ({key, enabled}) и/или шаблон
-// ({key, templateId}; пустая строка — снять шаблон). Шаблон можно задать и
-// письму, которое нельзя выключить.
+// ({key, templateId} — русский, {key, templateIdEn} — английский; пустая
+// строка — снять шаблон). Шаблон можно задать и письму, которое нельзя выключить.
 func (s *Server) handleAdminEmailsPut(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Key        string  `json:"key"`
-		Enabled    *bool   `json:"enabled"`
-		TemplateID *string `json:"templateId"`
+		Key          string  `json:"key"`
+		Enabled      *bool   `json:"enabled"`
+		TemplateID   *string `json:"templateId"`
+		TemplateIDEn *string `json:"templateIdEn"`
 	}
-	if err := readJSON(r, &body); err != nil || (body.Enabled == nil && body.TemplateID == nil) {
+	if err := readJSON(r, &body); err != nil || (body.Enabled == nil && body.TemplateID == nil && body.TemplateIDEn == nil) {
 		writeJSON(w, 400, map[string]string{"error": "bad_request"})
 		return
 	}
@@ -309,13 +319,17 @@ func (s *Server) handleAdminEmailsPut(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": "email_locked"})
 		return
 	}
-	var templateID string
-	if body.TemplateID != nil {
-		templateID = strings.ToLower(strings.TrimSpace(*body.TemplateID))
-		if templateID != "" && !templateIDRe.MatchString(templateID) {
+	templates := map[string]string{} // язык → новый id шаблона
+	for lang, v := range map[string]*string{store.LangRU: body.TemplateID, store.LangEN: body.TemplateIDEn} {
+		if v == nil {
+			continue
+		}
+		id := strings.ToLower(strings.TrimSpace(*v))
+		if id != "" && !templateIDRe.MatchString(id) {
 			writeJSON(w, 400, map[string]string{"error": "bad_template_id"})
 			return
 		}
+		templates[lang] = id
 	}
 	if body.Enabled != nil {
 		if err := store.SetEmailEnabled(r.Context(), s.DB, k.Key, *body.Enabled); err != nil {
@@ -324,12 +338,12 @@ func (s *Server) handleAdminEmailsPut(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("[mail] admin: %s enabled=%v", k.Key, *body.Enabled)
 	}
-	if body.TemplateID != nil {
-		if err := store.SetEmailTemplateID(r.Context(), s.DB, k.Key, templateID); err != nil {
+	for lang, templateID := range templates {
+		if err := store.SetEmailTemplateID(r.Context(), s.DB, k.Key, lang, templateID); err != nil {
 			writeJSON(w, 500, map[string]string{"error": "db"})
 			return
 		}
-		log.Printf("[mail] admin: %s template=%q", k.Key, templateID)
+		log.Printf("[mail] admin: %s template[%s]=%q", k.Key, lang, templateID)
 	}
 	writeJSON(w, 200, s.adminEmailsResponse(r.Context()))
 }
@@ -364,4 +378,13 @@ func (s *Server) handleAdminEmailLog(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "total": total, "page": page, "perPage": emailLogPerPage})
+}
+
+// paidIntro — первая строка письма «Ваша песня готова», когда оно уходит сразу
+// после оплаты (подстановка {{intro}}), на языке заказа.
+func paidIntro(lang string) string {
+	if lang == store.LangEN {
+		return "Thank you, your payment has been received!"
+	}
+	return "Спасибо, оплата получена!"
 }

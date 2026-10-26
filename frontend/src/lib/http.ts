@@ -1,4 +1,10 @@
+import { getLang } from './lang'
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+
+// Язык страницы, с которой создан заказ: по нему сервер выбирает промпты песни,
+// письма и язык ссылок в них (src/lib/lang.ts).
+const LANG_HEADER = 'X-Site-Lang'
 
 export function resolveApiUrl(urlOrPath: string) {
   const v = (urlOrPath ?? '').trim()
@@ -40,6 +46,7 @@ export async function apiPost<T>(path: string, body: unknown, opts?: { token?: s
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      [LANG_HEADER]: getLang(),
       ...(opts?.token ? { Authorization: `Bearer ${opts.token}` } : {}),
     },
     body: JSON.stringify(body),
@@ -62,6 +69,7 @@ export async function apiPatch<T>(path: string, body: unknown, opts?: { token?: 
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
+      [LANG_HEADER]: getLang(),
       ...(opts?.token ? { Authorization: `Bearer ${opts.token}` } : {}),
     },
     body: JSON.stringify(body ?? {}),
@@ -82,6 +90,7 @@ export async function apiPut<T>(path: string, body: unknown, opts?: { token?: st
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
+      [LANG_HEADER]: getLang(),
       ...(opts?.token ? { Authorization: `Bearer ${opts.token}` } : {}),
     },
     body: JSON.stringify(body),

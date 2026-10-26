@@ -105,6 +105,7 @@ func (r adminOrderRow) json() map[string]any {
 		},
 		"paymentKind":       r.paymentKind,
 		"paymentProvider":   nullStr(o.PaymentProvider.String),
+		"language":          o.Lang(),
 		"currency":          r.currency,
 		"landingUrl":        nullStr(r.landingURL),
 		"createdAt":         o.CreatedAt.UTC().Format(time.RFC3339Nano),
@@ -135,7 +136,7 @@ func (r adminOrderRow) json() map[string]any {
 
 // csvColumns — шапка выгрузки. Порядок фиксирован: по нему же собирается строка.
 var csvColumns = []string{
-	"created_at", "order_id", "order_url", "email", "phone", "recipient",
+	"created_at", "order_id", "order_url", "language", "email", "phone", "recipient",
 	"arm", "flow", "price", "currency", "payment_status", "payment_kind", "payment_provider", "provider_payment_id",
 	"subscription_status", "subscription_price", "subscription_payments", "subscription_last_payment",
 	"song_status", "delivery_status",
@@ -151,7 +152,7 @@ func (r adminOrderRow) csv(orderURL string) []string {
 		subPrice = strconv.Itoa(r.subscriptionPrice)
 	}
 	return []string{
-		o.CreatedAt.UTC().Format(time.RFC3339), o.ID, orderURL, r.email, r.whatsapp, jsonRecipient(o.InputPayloadJSON),
+		o.CreatedAt.UTC().Format(time.RFC3339), o.ID, orderURL, o.Lang(), r.email, r.whatsapp, jsonRecipient(o.InputPayloadJSON),
 		o.FlowVariant.String, o.Flow.String, strconv.Itoa(orderFinalPrice(o)), r.currency, o.PaymentStatus, r.paymentKind, o.PaymentProvider.String, o.YooPaymentID.String,
 		r.subStatus, subPrice, strconv.Itoa(r.subPayments.Count), r.subPayments.LastFlow,
 		o.Status, o.DeliveryStatus,

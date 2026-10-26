@@ -133,13 +133,23 @@ const unisenderUnsubscribeURL = "{{UnsubscribeUrl}}"
 type Tracking struct {
 	Ref string // ключ строки email_log; Go возвращает его в вебхуке (metadata.ref)
 	Tag string // тип письма — метка в отчётах кабинета Go (до 50 символов)
+	// Language — язык страницы отписки Go: ru (по умолчанию) или en — по
+	// языку заказа (английская версия сайта).
+	Language string
+}
+
+func (tr Tracking) language() string {
+	if tr.Language == "en" {
+		return "en"
+	}
+	return "ru"
 }
 
 // unisenderGoHeader — опции заголовка X-UNISENDER-GO (те же, что у email/send):
 // ссылки ведут прямо на сайт (track_links=0 включён поддержкой 2026-10-12),
-// прочтения считаются (track_read), страница отписки на русском.
+// прочтения считаются (track_read), страница отписки на языке письма.
 func unisenderGoHeader(tr Tracking) string {
-	opts := map[string]any{"track_links": 0, "track_read": 1, "global_language": "ru"}
+	opts := map[string]any{"track_links": 0, "track_read": 1, "global_language": tr.language()}
 	if tr.Ref != "" {
 		opts["global_metadata"] = map[string]string{"ref": tr.Ref}
 	}

@@ -125,6 +125,7 @@ type AdminOrder = {
   subscriptionPayments: { count: number; firstAt: string | null; lastFlow: string | null }
   paymentKind: 'one_time' | 'subscription_song' | 'internal' | 'free'
   paymentProvider: string | null
+  language: 'ru' | 'en'
   landingUrl: string | null
   demoCompleted: boolean
   isFallback: boolean
@@ -592,7 +593,12 @@ export function AdminOrdersRoute() {
                       {o.id}
                     </a>
                   </td>
-                  <td className="px-3 py-3 text-gray-800">{o.recipientName || '—'}</td>
+                  <td className="px-3 py-3 text-gray-800">
+                    {o.recipientName || '—'}
+                    {o.language === 'en' && (
+                      <span className="ml-1.5 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700" title="Заказ с английской версии сайта">EN</span>
+                    )}
+                  </td>
                   <td className="px-3 py-3 text-gray-600">
                     <div>{o.email || '—'}</div>
                     {o.whatsappNumber && <div className="text-xs text-gray-400">{o.whatsappNumber}</div>}
