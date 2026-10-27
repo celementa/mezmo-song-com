@@ -11,6 +11,7 @@ import { COMPANY, LEGAL_LINKS } from '@/lib/site'
 import { openCookieSettings } from '@/lib/consent'
 import type { LandingData } from '@/hooks/useLandingData'
 import type { TemplateDef } from './types'
+import { ReviewShots, type ReviewShot } from '@/components/landing/ReviewShots'
 
 // Hero audio player bar
 function GoldHeroPlayer({ track }: { track?: { audioUrl?: string | null; title?: string; time?: string } | null }) {
@@ -270,9 +271,19 @@ function GoldRender(data: LandingData) {
   const { search } = useLocation()
   const arm = new URLSearchParams(search).get('arm')
   // Скриншоты переписок: для EN свои (Telegram, WhatsApp, iMessage, письмо)
-  const reviewShots = lang === 'en'
-    ? ['/images/review-en-telegram-andy.jpg', '/images/review-en-whatsapp-lauren.jpg', '/images/review-en-imessage-beatrice.jpg', '/images/review-en-email-alice.jpg']
-    : ['/images/review-telegram-galya.png', '/images/review-whatsapp-proposal.png', '/images/review-max-olga.png', '/images/review-order-process.png']
+  const reviewShots: ReviewShot[] = lang === 'en'
+    ? [
+        { src: '/images/review-en-telegram-andy.jpg', ratio: 872 / 224, alt: 'Telegram review: a surprise song for dad\'s birthday' },
+        { src: '/images/review-en-whatsapp-lauren.jpg', ratio: 1179 / 735, alt: 'WhatsApp review: a song for mom\'s 60th birthday' },
+        { src: '/images/review-en-imessage-beatrice.jpg', ratio: 1179 / 1059, alt: 'iMessage review: a song for a friend\'s wedding' },
+        { src: '/images/review-en-email-alice.jpg', ratio: 1179 / 1229, alt: 'Review about the ordering process: “ordered in 5 minutes” for an anniversary' },
+      ]
+    : [
+        { src: '/images/review-telegram-galya.png', ratio: 1179 / 541, alt: 'Отзыв Галя, Telegram' },
+        { src: '/images/review-whatsapp-proposal.png', ratio: 1179 / 458, alt: 'Отзыв о предложении, WhatsApp' },
+        { src: '/images/review-max-olga.png', ratio: 1080 / 507, alt: 'Отзыв Максима и Ольги' },
+        { src: '/images/review-order-process.png', ratio: 1264 / 459, alt: 'Отзыв о процессе заказа' },
+      ]
 
   const configHref = localePath(arm ? `/config?arm=${encodeURIComponent(arm)}` : '/config')
 
@@ -1097,43 +1108,7 @@ function GoldRender(data: LandingData) {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Review 1 - Telegram */}
-          <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
-            <img
-              src={reviewShots[0]}
-              alt={tr('Отзыв Галя, Telegram', 'Telegram review: a surprise song for dad\'s birthday')}
-              className="w-full h-auto"
-            />
-          </div>
-
-          {/* Review 2 - WhatsApp */}
-          <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
-            <img
-              src={reviewShots[1]}
-              alt={tr('Отзыв о предложении, WhatsApp', 'WhatsApp review: a song for mom\'s 60th birthday')}
-              className="w-full h-auto"
-            />
-          </div>
-
-          {/* Review 3 - MAX/Olga */}
-          <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
-            <img
-              src={reviewShots[2]}
-              alt={tr('Отзыв Максима и Ольги', 'iMessage review: a song for a friend\'s wedding')}
-              className="w-full h-auto"
-            />
-          </div>
-
-          {/* Review 4 - про процесс заказа (широкий скриншот, во всю ширину сетки) */}
-          <div className="bg-white rounded-2xl overflow-hidden shadow-lg md:col-span-3">
-            <img
-              src={reviewShots[3]}
-              alt={tr('Отзыв о процессе заказа', 'Review about the ordering process: “ordered in 5 minutes” for an anniversary')}
-              className="w-full h-auto"
-            />
-          </div>
-        </div>
+        <ReviewShots shots={reviewShots} />
       </section>
 
       {/* === FAQ SECTION === */}
