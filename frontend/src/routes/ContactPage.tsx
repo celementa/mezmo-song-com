@@ -76,7 +76,7 @@ export function ContactPage() {
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
                 <h3 className="font-medium text-gray-800 mb-1">{tr('Способы оплаты', 'Payment methods')}</h3>
-                <p className="text-sm text-gray-500">{tr('Банковские карты Visa и Mastercard через платёжный сервис UnitPay, оплата в долларах США или российских рублях (переключатель «$ / ₽» на сайте). Данные карты обрабатывает UnitPay — мы их не видим.', 'Visa and Mastercard bank cards via the UnitPay payment service, paid in US dollars or Russian rubles (switch “$ / ₽” on the site). Card details are processed by UnitPay — we never see them.')}</p>
+                <p className="text-sm text-gray-500">{tr('Рублёвые платежи — через ЮKassa: карты Мир, Visa и Mastercard, СБП, SberPay, T-Pay и ЮMoney. Платежи в долларах США — через международного провайдера, указанного на странице оплаты. Данные карты обрабатывает платёжный сервис — мы их не видим.', 'Ruble payments go through YooKassa: Mir, Visa and Mastercard cards, SBP, SberPay, T-Pay and YooMoney. US dollar payments go through the international provider shown on the payment page. Card details are processed by the payment service — we never see them.')}</p>
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
                 <h3 className="font-medium text-gray-800 mb-1">{tr('Возврат и отмена', 'Refunds and cancellations')}</h3>
