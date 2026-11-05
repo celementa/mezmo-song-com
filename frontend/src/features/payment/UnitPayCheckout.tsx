@@ -17,8 +17,8 @@ import { StepShell } from '@/routes/create/StepShell'
 import { formatMoney, type OrderCurrency } from '@/lib/currency'
 import { localePath, useTr } from '@/lib/lang'
 import { PaymentLogos } from '@/components/landing/PaymentLogos'
-import { loadStripeJs } from './loadStripe'
 import { loadYookassaWidget } from './loadYookassaWidget'
+import { saveStripeSession } from './stripeSession'
 
 export type PaymentMode = 'embedded' | 'redirect'
 
@@ -102,7 +102,6 @@ export function UnitPayCheckout({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [widget, setWidget] = useState<{ url: string; returnUrl: string } | null>(null)
-  const [stripe, setStripe] = useState<{ clientSecret: string; publishableKey: string } | null>(null)
   // Виджет ЮKassa живёт прямо на странице — человек не уходит на чужой домен и,
   // значит, не зависит от того, вернёт ли его банковское приложение обратно.
   const [yoo, setYoo] = useState<{ token: string; returnUrl: string } | null>(null)
@@ -128,7 +127,10 @@ export function UnitPayCheckout({
           setError(tr('Stripe не настроен. Попробуйте другой способ оплаты.', 'Stripe is not configured. Please choose another payment method.'))
           return
         }
-        setStripe({ clientSecret: res.clientSecret, publishableKey: res.publishableKey })
+        // Форма Stripe открывается на отдельной странице: на экране только она,
+        // без сводки, согласия и прокрутки. client_secret — в sessionStorage.
+        saveStripeSession({ clientSecret: res.clientSecret, publishableKey: res.publishableKey })
+        window.location.assign(localePath('/pay/stripe'))
         return
       }
       if (res.confirmationToken && res.returnUrl) {
@@ -173,14 +175,14 @@ export function UnitPayCheckout({
         'A personal song based on your story: audio file and lyrics, lifetime access.',
       )}
       primaryLabel={
-        stripe || yoo
+        yoo
           ? tr('Форма оплаты открыта ниже', 'Payment form is open below')
           : busy
             ? tr('Открываем оплату…', 'Opening payment…')
             : tr(`Оплатить ${money(amount)}`, `Pay ${money(amount)}`)
       }
       onPrimary={() => void pay()}
-      primaryDisabled={!agreed || busy || Boolean(stripe) || Boolean(yoo)}
+      primaryDisabled={!agreed || busy || Boolean(yoo)}
     >
       <div className="rounded-2xl border border-[#EFE4D2] bg-white p-4">
         <div className="flex items-baseline justify-between gap-3">
@@ -194,6 +196,20 @@ export function UnitPayCheckout({
         </div>
         {summary ? <div className="mt-3 text-xs text-[#6b6259]">{summary}</div> : null}
       </div>
+
+      {/* Российская ветка: VPN ломает оплату — банк видит зарубежный IP и
+          отклоняет платёж. Предупреждаем до нажатия «Оплатить», а не после. */}
+      {currency === 'RUB' ? (
+        <div className="mt-4 rounded-2xl border border-[#EAD3A6] bg-[#FFF7E6] p-3.5 text-xs leading-relaxed text-[#6b5320]">
+          <p className="font-bold">{tr('Выключите VPN перед оплатой', 'Turn off VPN before paying')}</p>
+          <p className="mt-1">
+            {tr(
+              'Российские карты и СБП не проходят с зарубежного IP — банк отклонит платёж. Отключите VPN, обновите страницу и попробуйте снова.',
+              'Russian cards and SBP do not work from a foreign IP — the bank will decline the payment. Turn off the VPN, reload the page and try again.',
+            )}
+          </p>
+        </div>
+      ) : null}
 
       <label className="mt-4 flex cursor-pointer items-start gap-3 text-xs leading-relaxed text-[#3b352f]">
         <input
@@ -254,13 +270,6 @@ export function UnitPayCheckout({
           }
         />
       ) : null}
-      {stripe ? (
-        <StripeEmbeddedCheckout
-          clientSecret={stripe.clientSecret}
-          publishableKey={stripe.publishableKey}
-          onError={() => setError(tr('Не получилось открыть форму Stripe. Попробуйте ещё раз.', "Couldn't open the Stripe form. Please try again."))}
-        />
-      ) : null}
       {widget ? (
         <UnitPayWidget
           url={widget.url}
@@ -284,59 +293,6 @@ const WIDGET_ORIGIN = 'https://widget.unitpay.money'
  * {action: 'success' | 'close' | ...}. Оплату засчитывает только уведомление
  * UnitPay серверу — 'success' лишь уводит на страницу заказа, которая ждёт его.
  */
-/** Встроенная форма Stripe: карты, Apple Pay и Google Pay показывает она сама. */
-export function StripeEmbeddedCheckout({
-  clientSecret,
-  publishableKey,
-  onError,
-}: {
-  clientSecret: string
-  publishableKey: string
-  onError: () => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  // Колбэк ошибки не должен пересоздавать форму: родитель передаёт inline-функцию,
-  // её идентичность меняется на каждом рендере, и useEffect с onError в зависимостях
-  // уничтожал бы и монтировал Stripe заново — форма «мигала» бесконечно.
-  const onErrorRef = useRef(onError)
-  useEffect(() => {
-    onErrorRef.current = onError
-  }, [onError])
-  useEffect(() => {
-    let alive = true
-    let instance: { destroy: () => void } | null = null
-    void loadStripeJs()
-      .then(() => {
-        const factory = window.Stripe
-        if (!factory) throw new Error('stripe_js_missing')
-        return factory(publishableKey).initEmbeddedCheckout({ clientSecret })
-      })
-      .then((checkout) => {
-        if (!alive || !ref.current) {
-          checkout.destroy()
-          return
-        }
-        checkout.mount(ref.current)
-        instance = checkout
-        // Форма Stripe монтируется ниже сводки и юридического текста; на телефоне
-        // её легко не заметить за cookie-баннером. Подводим экран к форме.
-        window.setTimeout(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
-        // Форма Stripe монтируется внизу шага, и её легко не заметить — особенно
-        // на телефоне и под баннером cookie. Подводим экран к ней сразу после
-        // отрисовки: иначе покупатель видит только сводку и галочку.
-        ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      })
-      .catch(() => {
-        if (alive) onErrorRef.current()
-      })
-    return () => {
-      alive = false
-      instance?.destroy()
-    }
-  }, [clientSecret, publishableKey])
-  return <div ref={ref} className="mt-4 min-h-[320px]" />
-}
-
 /**
  * Виджет ЮKassa: карта, СБП, SberPay, ЮMoney — прямо на нашей странице, без
  * ухода на чужой домен. Поэтому возврат с оплаты перестаёт зависеть от того,
@@ -354,7 +310,7 @@ export function YookassaCheckoutWidget({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   // Виджет рендерится по id контейнера, а не по ссылке на узел.
-  const containerId = useRef(`yookassa-widget-${Math.random().toString(36).slice(2)}`)
+  const [containerId] = useState(() => `yookassa-widget-${Math.random().toString(36).slice(2)}`)
   const onErrorRef = useRef(onError)
   useEffect(() => {
     onErrorRef.current = onError
@@ -379,7 +335,7 @@ export function YookassaCheckoutWidget({
         instance.on('fail', () => {
           if (alive) onErrorRef.current()
         })
-        return instance.render(containerId.current).then(() => {
+        return instance.render(containerId).then(() => {
           if (!alive) {
             instance.destroy()
             return
@@ -396,8 +352,8 @@ export function YookassaCheckoutWidget({
       alive = false
       widget?.destroy()
     }
-  }, [confirmationToken, returnUrl])
-  return <div id={containerId.current} ref={ref} className="mt-4 min-h-[420px]" />
+  }, [confirmationToken, returnUrl, containerId])
+  return <div id={containerId} ref={ref} className="mt-4 min-h-[420px]" />
 }
 
 function RuLogos() {

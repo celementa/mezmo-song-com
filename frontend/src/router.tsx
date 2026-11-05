@@ -27,6 +27,7 @@ const AdminSettingsRoute = lazy(() => import('@/routes/AdminSettingsRoute').then
 const AdminEmailsRoute = lazy(() => import('@/routes/AdminEmailsRoute').then((m) => ({ default: m.AdminEmailsRoute })))
 const LegalPage = lazy(() => import('@/routes/LegalPage').then((m) => ({ default: m.LegalPage })))
 const ContactPage = lazy(() => import('@/routes/ContactPage').then((m) => ({ default: m.ContactPage })))
+const PayStripeRoute = lazy(() => import('@/routes/PayStripeRoute').then((m) => ({ default: m.PayStripeRoute })))
 
 function LazyFallback() {
   return (
@@ -100,6 +101,17 @@ const contentPages: RouteObject[] = [
     ),
   },
   { path: '/thanks', element: <Suspense fallback={<LazyFallback />}><ThanksRoute /></Suspense> },
+  {
+    // Форма Stripe на отдельном экране: на странице только виджет провайдера.
+    path: '/pay/stripe',
+    element: (
+      <Suspense fallback={<LazyFallback />}>
+        <ThemeProvider themeSlug={null}>
+          <PayStripeRoute />
+        </ThemeProvider>
+      </Suspense>
+    ),
+  },
   { path: '/order/:orderId', element: <Suspense fallback={<LazyFallback />}><OrderDeliveryRoute /></Suspense> },
   { path: '/terms', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="terms" /></Suspense> },
   { path: '/privacy', element: <Suspense fallback={<LazyFallback />}><LegalPage doc="privacy" /></Suspense> },

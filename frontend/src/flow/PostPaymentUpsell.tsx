@@ -8,7 +8,7 @@ import { CREAM, GOLD } from '@/routes/create/StepShell'
 import { useFlowConfig } from './useFlowConfig'
 import { markUpsellSeen } from './upsellSeen'
 import { formatMoney, type OrderCurrency } from '@/lib/currency'
-import { StripeEmbeddedCheckout } from '@/features/payment/UnitPayCheckout'
+import { saveStripeSession } from '@/features/payment/stripeSession'
 
 /**
  * Шаги 11–12 варианта 1: апсейл подписки и апсейл стемов сразу после оплаты.
@@ -61,7 +61,6 @@ export function PostPaymentUpsell({
   const [screen, setScreen] = useState<'subscription' | 'stems'>('subscription')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [stripe, setStripe] = useState<{ clientSecret: string; publishableKey: string } | null>(null)
 
   const finish = () => {
     markUpsellSeen(orderRef)
@@ -109,7 +108,9 @@ export function PostPaymentUpsell({
       // здесь же, карта привязывается сейчас, списание — через месяц.
       if (res.clientSecret) {
         if (!res.publishableKey) throw new Error('stripe_not_configured')
-        setStripe({ clientSecret: res.clientSecret, publishableKey: res.publishableKey })
+        // Форма Stripe — на отдельной странице, как и в оплате песни.
+        saveStripeSession({ clientSecret: res.clientSecret, publishableKey: res.publishableKey })
+        window.location.assign(localePath('/pay/stripe'))
         return
       }
       // Отдельного экрана «Подписка оформлена» нет: о подписке расскажет письмо,
@@ -213,21 +214,9 @@ export function PostPaymentUpsell({
         <p className="mt-5 text-center text-xs text-[#9c9186]">
           {tr('Далее', 'Then')} — {money(subscriptionPrice)}{tr('/мес, спишем через месяц. Отмена в любой момент.', '/mo, billed in a month. Cancel anytime.')}
         </p>
-        {stripe ? (
-          <div className="mt-4 rounded-2xl border border-[#EFE4D2] bg-white p-2">
-            <StripeEmbeddedCheckout
-              clientSecret={stripe.clientSecret}
-              publishableKey={stripe.publishableKey}
-              onError={() =>
-                setError(tr('Не получилось открыть форму Stripe. Попробуйте ещё раз.', "Couldn't open the Stripe form. Please try again."))
-              }
-            />
-          </div>
-        ) : (
-          <button type="button" className={`${primaryButtonClass} mt-3`} style={primaryButtonStyle} disabled={busy} onClick={subscribeFromOrder}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tr('Перейти на безлимит за $0', 'Go unlimited for $0')}
-          </button>
-        )}
+        <button type="button" className={`${primaryButtonClass} mt-3`} style={primaryButtonStyle} disabled={busy} onClick={subscribeFromOrder}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tr('Перейти на безлимит за $0', 'Go unlimited for $0')}
+        </button>
         {/* Вторичная кнопка с рамкой, а не ссылка: на телефоне «Не сейчас»
             без рамки терялось под основной и не читалось как кликабельное. */}
         <button
