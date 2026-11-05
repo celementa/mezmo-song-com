@@ -28,7 +28,9 @@ done
 html="$DIR/index.html"
 grep -qF "i='GTM-KL799LS7'" "$html" || { echo "FAIL: в index.html нет контейнера GTM-KL799LS7" >&2; fail=1; }
 grep -qF 'content="noindex, nofollow"' "$html" || { echo "FAIL: в index.html нет noindex" >&2; fail=1; }
-grep -qF 'href="https://mezmo-song.com/"' "$html" || { echo "FAIL: canonical не на mezmo-song.com" >&2; fail=1; }
+grep -qE 'rel="canonical" href="https://mezmo-song\.com/' "$html" || { echo "FAIL: canonical не на mezmo-song.com" >&2; fail=1; }
+grep -qF 'hreflang="ru"' "$html" || { echo "FAIL: нет hreflang ru" >&2; fail=1; }
+grep -qF 'hreflang="en"' "$html" || { echo "FAIL: нет hreflang en" >&2; fail=1; }
 grep -qF 'window.__SETTINGS__=' "$html" || { echo "FAIL: не заинлайнен снимок настроек (SPA упадёт в classic)" >&2; fail=1; }
 grep -qxF 'Disallow: /' "$DIR/robots.txt" 2>/dev/null || { echo "FAIL: robots.txt не закрывает сайт" >&2; fail=1; }
 [ ! -e "$DIR/sitemap.xml" ] || { echo "FAIL: в бандле есть sitemap.xml" >&2; fail=1; }

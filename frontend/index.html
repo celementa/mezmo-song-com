@@ -5,15 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#E11D48" />
 
-    <!-- Язык (src/lib/lang.ts): английская версия под /en. Заход на /, /config или
-         /create без префикса уводим на /en, если человек раньше смотрел английскую
-         версию или, без сохранённого выбора, если язык браузера не русский. Решается
-         до загрузки SPA, чтобы не мигала чужая версия. -->
-    <script>(function(){try{var p=location.pathname;if(p!=='/'&&p!=='/config'&&p!=='/create')return;
-    var saved=null;try{saved=localStorage.getItem('mezmo:lang')}catch(e){}
-    var langs=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||''];
-    var ru=/^(ru|uk|be|kk)\b/i.test(langs[0]||'');
-    if(saved==='en'||(!saved&&!ru))location.replace('/en'+(p==='/'?'':p)+location.search+location.hash);}catch(e){}})();</script>
+    <!-- Язык (src/lib/lang.ts): канонические адреса — /ru/… и /en/…. Любой
+         заход без языкового префикса (корень, /config, /order/…, старые ссылки)
+         уводим на язык из куки, затем localStorage, затем Accept-Language.
+         Query и hash сохраняются целиком: ?arm= и UTM не должны теряться.
+         Решается до загрузки SPA, чтобы не мигала чужая версия. -->
+    <script>(function(){try{
+      var p=location.pathname;
+      if(/^\/(admin|api|health)(\/|$)/.test(p))return;
+      if(/^\/(ru|en)(\/|$)/.test(p))return;
+      var saved=null,m=document.cookie.match(/(?:^|;\s*)mezmo_lang=(ru|en)/);
+      if(m)saved=m[1];
+      if(!saved){try{var l=localStorage.getItem('mezmo:lang');if(l==='ru'||l==='en')saved=l}catch(e){}}
+      if(!saved){
+        var langs=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||''];
+        saved=/^ru\b/i.test(langs[0]||'')?'ru':'en';
+      }
+      location.replace('/'+saved+(p==='/'?'':p)+location.search+location.hash);
+    }catch(e){}})();</script>
 
     <!-- Согласие на cookie (src/lib/consent.ts): Consent Mode v2 до загрузки GTM.
          Сохранённый выбор из баннера, иначе по умолчанию: ЕС/ЕЭЗ/UK (по часовому
@@ -53,7 +62,10 @@
     <meta name="keywords" content="персональная песня, песня на заказ, музыка, подарок, кастомный трек" />
     <meta name="author" content="Mezmo" />
     <meta name="robots" content="noindex, nofollow" />
-    <link rel="canonical" href="https://mezmo-song.com/" />
+    <link rel="canonical" href="https://mezmo-song.com/ru/" />
+    <link rel="alternate" hreflang="ru" href="https://mezmo-song.com/ru/" />
+    <link rel="alternate" hreflang="en" href="https://mezmo-song.com/en/" />
+    <link rel="alternate" hreflang="x-default" href="https://mezmo-song.com/ru/" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />

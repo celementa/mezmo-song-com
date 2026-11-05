@@ -1,15 +1,22 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, useRouteError, isRouteErrorResponse, type RouteObject } from 'react-router-dom'
+import {
+  createBrowserRouter,
+  Navigate,
+  useLocation,
+  useRouteError,
+  isRouteErrorResponse,
+  type RouteObject,
+} from 'react-router-dom'
 
 import { LandingRoute } from '@/routes/LandingRoute'
 import { PublicRoot } from '@/features/analytics/PublicRoot'
 import { ThemeProvider } from '@/features/theme/ThemeContext'
-import { localePath, tr } from '@/lib/lang'
+import { localePath, preferredLang, tr } from '@/lib/lang'
 
 // mezmo-song.com: лендинг, две воронки заказа (/config — анкета, потом оплата;
 // /create — оплата в начале), страница заказа, юридические страницы и админка.
-// Подписочных страниц (/subscribe, /account) нет: подписку продавать нечем,
-// пока UnitPay не включил рекуррентные платежи.
+// Канонические адреса — с языком: /ru/… и /en/…. Корень редиректит по куке или
+// Accept-Language; ссылка с языком в пути не перебивается.
 const FlowEntry = lazy(() => import('@/routes/FlowEntry').then((m) => ({ default: m.FlowEntry })))
 const CreateRoute = lazy(() => import('@/routes/create/CreateRoute').then((m) => ({ default: m.CreateRoute })))
 const OrderDeliveryRoute = lazy(() => import('@/routes/OrderDeliveryRoute').then((m) => ({ default: m.OrderDeliveryRoute })))
@@ -27,6 +34,11 @@ function LazyFallback() {
       <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[var(--theme-accent,#D4AF37)]" />
     </div>
   )
+}
+
+function RootRedirect() {
+  const { search, hash } = useLocation()
+  return <Navigate to={{ pathname: `/${preferredLang()}`, search, hash }} replace />
 }
 
 function RouteErrorFallback() {
@@ -50,16 +62,22 @@ function RouteErrorFallback() {
   )
 }
 
-// Публичные страницы сайта. Английская версия — те же страницы под /en
-// (src/lib/lang.ts); язык компоненты берут из адреса.
-const publicPages: RouteObject[] = [
+function landing(hidePrices: boolean) {
+  return (
+    <ThemeProvider themeSlug={null}>
+      <LandingRoute hidePrices={hidePrices} />
+    </ThemeProvider>
+  )
+}
+
+// Страницы без корня и без языкового префикса. Корень и /ru, /en добавляются
+// отдельно: у корня редирект, у языковых версий — тот же набор страниц.
+const contentPages: RouteObject[] = [
   {
-    path: '/',
-    element: (
-      <ThemeProvider themeSlug={null}>
-        <LandingRoute />
-      </ThemeProvider>
-    ),
+    // Копия лендинга с ценами: главная (/ru, /en) цен не показывает, полная
+    // версия остаётся отдельным адресом для рекламы и проверок.
+    path: '/start',
+    element: landing(false),
   },
   {
     path: '/config',
@@ -90,13 +108,23 @@ const publicPages: RouteObject[] = [
   { path: '/contacts', element: <Suspense fallback={<LazyFallback />}><ContactPage /></Suspense> },
 ]
 
+const localizedPages: RouteObject[] = (['ru', 'en'] as const).flatMap((lang) => [
+  // Главная — без цен: цена появляется только в шагах заказа. Полная версия
+  // лендинга с ценой живёт на /:lang/start.
+  { path: `/${lang}`, element: landing(true) },
+  ...contentPages.map((page) => ({ ...page, path: `/${lang}${page.path}` })),
+])
+
 export const router = createBrowserRouter([
   {
     element: <PublicRoot />,
     errorElement: <RouteErrorFallback />,
     children: [
-      ...publicPages,
-      ...publicPages.map((page) => ({ ...page, path: page.path === '/' ? '/en' : `/en${page.path}` })),
+      { path: '/', element: <RootRedirect /> },
+      ...localizedPages,
+      // Старые ссылки без языка продолжают открываться: их уже разослали в
+      // письмах и кампаниях. Новые ссылки всегда строятся с /ru или /en.
+      ...contentPages,
     ],
   },
   // Страницы админки Go отдаёт только после входа (cmd/server/adminauth.go).

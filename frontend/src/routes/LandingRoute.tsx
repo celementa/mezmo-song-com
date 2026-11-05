@@ -2,8 +2,8 @@ import { useLandingData } from '@/hooks/useLandingData'
 import { useTr } from '@/lib/lang'
 import { getTemplate } from '@/templates'
 
-export function LandingRoute() {
-  const data = useLandingData()
+export function LandingRoute({ hidePrices = false }: { hidePrices?: boolean }) {
+  const data = useLandingData(hidePrices ? { hidePrices: true } : undefined)
   const tr = useTr()
   // Until /settings resolves the template, paint the hero poster immediately
   // (it's preloaded in index.html) so the LCP/FCP doesn't wait on the API.

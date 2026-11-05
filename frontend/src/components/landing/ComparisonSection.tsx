@@ -72,7 +72,9 @@ export function ComparisonSection({
               <div key={i} className="flex flex-col items-center gap-2">
                 <span className="text-4xl mb-2">{item.icon}</span>
                 <span className="font-medium text-gray-900">{item.name}</span>
-                <span className="text-xs font-bold bg-gray-200 px-2 py-1 rounded text-gray-600">{tr('от', 'from')} {fmtCurrency(item.fromUsd)}</span>
+                {showPrice && (
+                  <span className="text-xs font-bold bg-gray-200 px-2 py-1 rounded text-gray-600">{tr('от', 'from')} {fmtCurrency(item.fromUsd)}</span>
+                )}
               </div>
             ))}
           </div>

@@ -4,7 +4,6 @@ import { Play, Pause } from 'lucide-react'
 import type { Loose } from '@/lib/loose'
 import { SeekBar } from '@/components/landing/SeekBar'
 import { PaymentLogos } from '@/components/landing/PaymentLogos'
-import { CurrencySwitch } from '@/components/CurrencySwitch'
 import { LangSwitch } from '@/components/LangSwitch'
 import { localePath, useLang, useTr } from '@/lib/lang'
 import { COMPANY, LEGAL_LINKS } from '@/lib/site'
@@ -258,6 +257,7 @@ function GoldRender(data: LandingData) {
     hero,
     sections,
     allTracks,
+    showPrice,
   } = data
 
   // Активный пример трека (играет не больше одного)
@@ -314,7 +314,6 @@ function GoldRender(data: LandingData) {
         </nav>
         <div className="flex items-center gap-3 md:gap-5">
           <LangSwitch />
-          <CurrencySwitch />
           <Link
             to={configHref}
             className="px-5 py-2.5 rounded-full text-white font-bold text-sm transition-all hover:opacity-90"
@@ -383,16 +382,18 @@ function GoldRender(data: LandingData) {
             {tr('Мария из Казани только что заказала песню', 'Maria from Kazan just ordered a song')}
           </div>
 
-          {/* Price badge */}
-          <div
-            className="text-xs font-black px-4 py-2 rounded-full shadow-lg"
-            style={{
-              background: 'linear-gradient(135deg, #F2C572, #B9852E, #f6dfa3)',
-              color: '#2b1a05',
-            }}
-          >
-            {fmtCurrency(paymentAmount)} {tr('вместо', 'instead of')} {fmtCurrency(originalAmount)}
-          </div>
+          {/* Price badge: на главной цен нет, только на копии /start. */}
+          {showPrice.heroCtaButton && (
+            <div
+              className="text-xs font-black px-4 py-2 rounded-full shadow-lg"
+              style={{
+                background: 'linear-gradient(135deg, #F2C572, #B9852E, #f6dfa3)',
+                color: '#2b1a05',
+              }}
+            >
+              {fmtCurrency(paymentAmount)} {tr('вместо', 'instead of')} {fmtCurrency(originalAmount)}
+            </div>
+          )}
         </div>
 
         {/* Hero content */}
@@ -441,14 +442,15 @@ function GoldRender(data: LandingData) {
             >
               {tr('Создать песню →', 'Create a song →')}
             </Link>
-            {/* Цена услуги должна быть видна на сайте до оплаты (требование
-                UnitPay), а бейдж цены в hero на мобилке скрыт. */}
-            <span className="text-sm font-semibold" style={{ color: '#F2C572' }}>
-              {fmtCurrency(paymentAmount)}
-              {originalAmount && originalAmount > (paymentAmount ?? 0) && (
-                <span className="ml-2 font-normal line-through" style={{ color: '#a89d8c' }}>{fmtCurrency(originalAmount)}</span>
-              )}
-            </span>
+            {/* Цена видна в шагах заказа; на главной её нет, на /start — есть. */}
+            {showPrice.heroCtaButton && (
+              <span className="text-sm font-semibold" style={{ color: '#F2C572' }}>
+                {fmtCurrency(paymentAmount)}
+                {originalAmount && originalAmount > (paymentAmount ?? 0) && (
+                  <span className="ml-2 font-normal line-through" style={{ color: '#a89d8c' }}>{fmtCurrency(originalAmount)}</span>
+                )}
+              </span>
+            )}
           </div>
 
           {/* Мобилка: вместо аудиоплеера — видео-реакция (фидбек Aug 2026). Аудиопример

@@ -8,6 +8,7 @@ import { useSyncExternalStore } from 'react'
  * компоненты с ценами подписаны на валюту через useCurrency.
  */
 export type Currency = 'USD' | 'RUB'
+export type OrderCurrency = 'RUB' | 'USD'
 
 /** Курс ЦБ РФ, ₽ за $1 (октябрь 2026). Рублёвые цены считаются от него. */
 export const RUB_PER_USD = 85.5
@@ -56,4 +57,22 @@ export function useCurrency(): Currency {
 export function inCurrency(usd: number, currency: Currency = current): number {
   if (currency === 'USD') return usd
   return Math.round((usd * RUB_PER_USD) / 10) * 10
+}
+
+/**
+ * Сумма в валюте заказа — без пересчёта по курсу. Рублёвая и долларовая цены
+ * заданы независимо, поэтому 750 ₽ не превращаются в $19 и обратно.
+ */
+export function formatMoney(amount: number, currency: OrderCurrency): string {
+  if (amount === 0) return currency === 'RUB' ? '0 ₽' : '$0'
+  return new Intl.NumberFormat(currency === 'RUB' ? 'ru-RU' : 'en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
+/** Валюта витрины по языку: /ru показывает рубли, /en — доллары. */
+export function currencyForLang(lang: 'ru' | 'en'): OrderCurrency {
+  return lang === 'ru' ? 'RUB' : 'USD'
 }

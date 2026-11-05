@@ -10,8 +10,8 @@ import { useThemeSlug } from '@/features/theme/ThemeContext'
 import type { ActivityToastConfig } from '@/components/activity-toast/ActivityToast'
 import type { TrackItem } from '@/components/landing/AudioSamplesSection'
 import { resolveSectionOrder, resolveSectionVisibility } from '@/lib/landingSections'
-import { fmtCurrency, ruDaysPhrase, ruHoursPhrase } from '@/routes/config/utils'
-import { inCurrency, useCurrency, type Currency } from '@/lib/currency'
+import { ruDaysPhrase, ruHoursPhrase } from '@/routes/config/utils'
+import { currencyForLang, formatMoney, type OrderCurrency } from '@/lib/currency'
 import { useLang, useTr, type Lang } from '@/lib/lang'
 import enLandingOverlay from '../../intl/landing.en.json'
 
@@ -167,7 +167,11 @@ type PublicSettingsResponse = {
   instantEnabled?: boolean
   deliveryDelayHours?: number
   paymentAmount?: number
+  paymentAmountUsd?: number
+  paymentAmountRub?: number
   originalAmount?: number
+  originalAmountUsd?: number
+  originalAmountRub?: number
   design?: string
 }
 
@@ -530,10 +534,10 @@ function enPhrase(n: number, unit: 'day' | 'hour') {
   return `${n} ${unit}${n === 1 ? '' : 's'}`
 }
 
-function fmtCurrencyGlobal(amt: number | null | undefined, currency: Currency, lang: Lang) {
+function fmtCurrencyGlobal(amt: number | null | undefined, currency: OrderCurrency, lang: Lang) {
   if (amt === 0) return lang === 'en' ? 'Free' : 'Бесплатно'
-  if (amt === null || amt === undefined) return fmtCurrency(25, currency)
-  return fmtCurrency(amt, currency)
+  const value = amt === null || amt === undefined ? (currency === 'RUB' ? 990 : 25) : amt
+  return formatMoney(value, currency)
 }
 
 function getInlinedConfig(): { cfg: PublicSiteConfig | null | undefined; design: string | null; instantEnabled: boolean | null; deliveryDelayHours: number | null; paymentAmount: number | null; originalAmount: number | null } {
@@ -556,7 +560,8 @@ function getInlinedConfig(): { cfg: PublicSiteConfig | null | undefined; design:
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useLandingData(): LandingData {
+export function useLandingData(options?: { hidePrices?: boolean }): LandingData {
+  const hidePrices = options?.hidePrices === true
   const themeSlug = useThemeSlug()
   const lang = useLang()
   const tr = useTr()
@@ -619,12 +624,16 @@ export function useLandingData(): LandingData {
 
   const [instantEnabled, setInstantEnabled] = useState<boolean | null>(_inlined.instantEnabled)
   const [deliveryDelayHours, setDeliveryDelayHours] = useState<number | null>(_inlined.deliveryDelayHours)
-  const [paymentAmount, setPaymentAmount] = useState<number | null>(_inlined.paymentAmount)
-  const [originalAmount, setOriginalAmount] = useState<number | null>(_inlined.originalAmount)
+  const [priceUsd, setPriceUsd] = useState<number | null>(_inlined.paymentAmount ?? 25)
+  const [priceRub, setPriceRub] = useState<number | null>(990)
+  const [originalUsd, setOriginalUsd] = useState<number | null>(_inlined.originalAmount ?? 75)
+  const [originalRub, setOriginalRub] = useState<number | null>(2990)
 
-  // Своя функция на каждую валюту: компоненты, получившие её пропсом, видят
-  // новую ссылку и перерисовывают цены при переключении «$ / ₽».
-  const currency = useCurrency()
+  // Валюта витрины задаётся языком страницы: /ru — рубли, /en — доллары.
+  // Переключателя больше нет, и курс не применяется — цены независимые.
+  const currency = currencyForLang(lang)
+  const paymentAmount = currency === 'RUB' ? (priceRub ?? 990) : (priceUsd ?? 25)
+  const originalAmount = currency === 'RUB' ? (originalRub ?? 2990) : (originalUsd ?? 75)
   const fmtCurrency = useCallback((amt: number | null | undefined) => fmtCurrencyGlobal(amt, currency, lang), [currency, lang])
 
   // --- Tracking ---
@@ -700,13 +709,18 @@ export function useLandingData(): LandingData {
       },
       {
         q: tr('Правда бесплатно / со скидкой?', 'Is it really free / discounted?'),
-        a: tr(
-          `Для первых клиентов — спецусловие (полная цена обычно ${fmtCurrency(originalAmount)}). Скрытых платежей нет.`,
-          `For first-time customers — a special offer (the regular price is usually ${fmtCurrency(originalAmount)}). No hidden fees.`,
-        ),
+        a: hidePrices
+          ? tr(
+              'Для первых клиентов — спецусловие на первый заказ. Скрытых платежей нет.',
+              'First-time customers get a special offer on their first order. No hidden fees.',
+            )
+          : tr(
+              `Для первых клиентов — спецусловие (полная цена обычно ${fmtCurrency(originalAmount)}). Скрытых платежей нет.`,
+              `For first-time customers — a special offer (the regular price is usually ${fmtCurrency(originalAmount)}). No hidden fees.`,
+            ),
       },
     ]
-  }, [deliveryEta.label, instantEnabled, publicSiteConfig, originalAmount, fmtCurrency, tr])
+  }, [deliveryEta.label, instantEnabled, publicSiteConfig, originalAmount, fmtCurrency, tr, hidePrices])
 
   // --- Scroll listener for mobile CTA ---
   useEffect(() => {
@@ -741,12 +755,17 @@ export function useLandingData(): LandingData {
         `A song with your story in the lyrics and studio-quality sound. Delivered ${deliveryEta.sentenceLower}.`,
       ),
       provider: { '@id': `${origin}/#organization` },
-      offers: {
-        '@type': 'Offer',
-        price: String(inCurrency(paymentAmount ?? 25, currency)),
-        priceCurrency: currency,
-        availability: 'https://schema.org/InStock',
-      },
+      // На главной цен нет — не отдаём их и в микроразметку.
+      ...(hidePrices
+        ? {}
+        : {
+            offers: {
+              '@type': 'Offer',
+              price: String(paymentAmount ?? (currency === 'RUB' ? 990 : 25)),
+              priceCurrency: currency,
+              availability: 'https://schema.org/InStock',
+            },
+          }),
     }
     const scriptOrg = document.createElement('script')
     scriptOrg.type = 'application/ld+json'
@@ -780,7 +799,7 @@ export function useLandingData(): LandingData {
       document.getElementById('ld-service')?.remove()
       document.getElementById('ld-faq')?.remove()
     }
-  }, [deliveryEta.sentenceLower, faqItems, publicSiteConfig, paymentAmount, currency, tr])
+  }, [deliveryEta.sentenceLower, faqItems, publicSiteConfig, paymentAmount, currency, tr, hidePrices])
 
   // --- Fetch settings ---
   useEffect(() => {
@@ -814,8 +833,16 @@ export function useLandingData(): LandingData {
         else setPublicSiteConfig(null)
         setInstantEnabled(typeof res?.instantEnabled === 'boolean' ? res.instantEnabled : null)
         setDeliveryDelayHours(typeof res?.deliveryDelayHours === 'number' ? res.deliveryDelayHours : null)
-        setPaymentAmount(typeof res?.paymentAmount === 'number' ? res.paymentAmount : null)
-        setOriginalAmount(typeof res?.originalAmount === 'number' ? res.originalAmount : null)
+        const usd = typeof res?.paymentAmountUsd === 'number'
+          ? res.paymentAmountUsd
+          : typeof res?.paymentAmount === 'number' ? res.paymentAmount : null
+        setPriceUsd(usd)
+        setPriceRub(typeof res?.paymentAmountRub === 'number' ? res.paymentAmountRub : 990)
+        const originalUsdValue = typeof res?.originalAmountUsd === 'number'
+          ? res.originalAmountUsd
+          : typeof res?.originalAmount === 'number' ? res.originalAmount : null
+        setOriginalUsd(originalUsdValue)
+        setOriginalRub(typeof res?.originalAmountRub === 'number' ? res.originalAmountRub : 2990)
         setDesign(typeof res?.design === 'string' && res.design ? res.design : 'classic')
       })
       .catch(() => {
@@ -824,9 +851,11 @@ export function useLandingData(): LandingData {
     // Тексты и дизайн лендинга — из вшитого снимка, а цена плеча из ссылки —
     // с сервера: та же цена, что потом выставит воронка (/?arm=variant3-500-750s → $19).
     if (armName) {
-      apiGet<{ price?: number }>(`/api/public/flow?sid=${encodeURIComponent(getSessionId())}&arm=${encodeURIComponent(armName)}`)
+      apiGet<{ price?: number; priceRub?: number }>(`/api/public/flow?sid=${encodeURIComponent(getSessionId())}&arm=${encodeURIComponent(armName)}`)
         .then((cfg) => {
-          if (!cancelled && typeof cfg?.price === 'number') setPaymentAmount(cfg.price)
+          if (cancelled) return
+          if (typeof cfg?.price === 'number') setPriceUsd(cfg.price)
+          if (typeof cfg?.priceRub === 'number') setPriceRub(cfg.priceRub)
         })
         .catch(() => {})
     }
@@ -1140,16 +1169,29 @@ export function useLandingData(): LandingData {
 
   // Price visibility
   const pv = site.priceVisibility ?? {} as Loose
-  const showPrice: ShowPrice = {
-    promoBanner: pv.promoBanner !== false,
-    header: pv.header !== false,
-    heroCtaButton: pv.heroCtaButton !== false,
-    audioSamplesButton: pv.audioSamplesButton !== false,
-    comparisonSection: pv.comparisonSection !== false,
-    howItWorksButton: pv.howItWorksButton !== false,
-    footerCtaButton: pv.footerCtaButton !== false,
-    mobileStickyButton: pv.mobileStickyButton !== false,
-  }
+  // Один флаг на весь лендинг: главная (/ru, /en) показывает лендинг без цен,
+  // а копия на /start — с ценами, без второй вёрстки.
+  const showPrice: ShowPrice = hidePrices
+    ? {
+        promoBanner: false,
+        header: false,
+        heroCtaButton: false,
+        audioSamplesButton: false,
+        comparisonSection: false,
+        howItWorksButton: false,
+        footerCtaButton: false,
+        mobileStickyButton: false,
+      }
+    : {
+        promoBanner: pv.promoBanner !== false,
+        header: pv.header !== false,
+        heroCtaButton: pv.heroCtaButton !== false,
+        audioSamplesButton: pv.audioSamplesButton !== false,
+        comparisonSection: pv.comparisonSection !== false,
+        howItWorksButton: pv.howItWorksButton !== false,
+        footerCtaButton: pv.footerCtaButton !== false,
+        mobileStickyButton: pv.mobileStickyButton !== false,
+      }
 
   // Toast config
   const toastConfig = (site.activityToast && typeof site.activityToast === 'object'

@@ -6,7 +6,7 @@ import { cachedSettingsGet } from '@/lib/settingsCache'
 import { isLocalhost } from '@/lib/isLocalhost'
 import { captureAttribution } from '@/lib/attribution'
 import type { Loose } from '@/lib/loose'
-import { langFromPath, rememberLang } from '@/lib/lang'
+import { langFromPath, rememberLang, stripLang } from '@/lib/lang'
 import { effectiveConsent, useConsentChoice } from '@/lib/consent'
 import { CookieBanner } from '@/components/CookieBanner'
 import { MaintenancePage } from '@/routes/MaintenancePage'
@@ -77,7 +77,41 @@ export function PublicRoot() {
     const meta = PAGE_META[lang]
     document.title = meta.title
     document.querySelector('meta[name="description"]')?.setAttribute('content', meta.description)
-  }, [lang])
+
+    // canonical и hreflang — на текущую страницу, а не на корень: поисковик
+    // должен видеть пару /ru/… ↔ /en/… для каждого шага флоу.
+    const base = 'https://mezmo-song.com'
+    const path = stripLang(location.pathname)
+    // /start — копия главной с ценами. Она не должна конкурировать с главной
+    // (без цен) в поиске: canonical на главную и явный noindex.
+    const isStart = path === '/start'
+    const suffix = path === '/' ? '' : path
+    const ru = `${base}/ru${suffix}`
+    const en = `${base}/en${suffix}`
+    document
+      .querySelector('link[rel="canonical"]')
+      ?.setAttribute('href', isStart ? `${base}/${lang}` : `${base}${location.pathname}`)
+    let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
+    if (isStart) {
+      if (!robots) {
+        robots = document.createElement('meta')
+        robots.name = 'robots'
+        document.head.appendChild(robots)
+      }
+      robots.content = 'noindex, nofollow'
+    }
+    const alternates: Record<string, string> = { ru, en, 'x-default': ru }
+    for (const [hreflang, href] of Object.entries(alternates)) {
+      let link = document.querySelector<HTMLLinkElement>(`link[rel="alternate"][hreflang="${hreflang}"]`)
+      if (!link) {
+        link = document.createElement('link')
+        link.rel = 'alternate'
+        link.hreflang = hreflang
+        document.head.appendChild(link)
+      }
+      link.href = href
+    }
+  }, [lang, location.pathname])
 
   useEffect(() => {
     // На localhost не подключаем пиксели и head-скрипты — чтобы тесты не слали события.
