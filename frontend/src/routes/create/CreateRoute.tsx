@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 
 import { apiGet, apiPost } from '@/lib/http'
@@ -164,12 +164,22 @@ function VariantFromOrder({ orderId }: { orderId: string }) {
 function ServerAssignedVariant() {
   const state = useFlowConfig()
   const navigate = useNavigate()
+  const { search } = useLocation()
 
   useEffect(() => {
     if (state.status === 'loading') return
     const route = state.status === 'ready' ? state.config.route ?? '' : ''
-    navigate(route.startsWith('/create') ? localePath(route) : localePath('/config'), { replace: true })
-  }, [state, navigate])
+    // Рекламные параметры (?arm=, UTM, ?order=) должны доехать до воронки:
+    // раньше переход на назначенное плечо шёл «чистым» путём, и ссылка
+    // /create?arm=variant4-990 теряла плечо и источник уже на первом шаге.
+    const [path, routeQuery = ''] = (route.startsWith('/create') ? route : '/config').split('?')
+    const params = new URLSearchParams(routeQuery)
+    new URLSearchParams(search).forEach((value, key) => {
+      if (!params.has(key)) params.set(key, value)
+    })
+    const query = params.toString()
+    navigate({ pathname: localePath(path), search: query ? `?${query}` : '' }, { replace: true })
+  }, [state, navigate, search])
 
   return (
     <div className="flex min-h-screen items-center justify-center">
