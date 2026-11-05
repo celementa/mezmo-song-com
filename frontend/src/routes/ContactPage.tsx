@@ -1,12 +1,15 @@
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Mail, Phone } from 'lucide-react'
 
-import { COMPANY } from '@/lib/site'
-import { localePath, useTr } from '@/lib/lang'
+import { companyFor, companyLines } from '@/lib/site'
+import { localePath, useLang, useTr } from '@/lib/lang'
 
 export function ContactPage() {
-  const email = COMPANY.email
   const tr = useTr()
+  const lang = useLang()
+  // Реквизиты по языку страницы: на /ru — ООО «МБК», на /en — Celementa FZCO.
+  const company = companyFor(lang)
+  const email = company.email
 
   return (
     <div className="min-h-screen bg-white">
@@ -33,7 +36,7 @@ export function ContactPage() {
           </a>
 
           <a
-            href={`tel:${COMPANY.phone.replace(/[^\d+]/g, '')}`}
+            href={`tel:${company.phone.replace(/[^\d+]/g, '')}`}
             className="group flex flex-col items-center gap-3 rounded-xl border border-gray-200 p-6 text-center transition-all hover:border-rose-200 hover:shadow-md"
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-500">
@@ -41,7 +44,7 @@ export function ContactPage() {
             </div>
             <h3 className="font-semibold text-gray-800">{tr('Телефон', 'Phone')}</h3>
             <p className="text-sm text-gray-500">{tr('Обычно отвечаем в течение 1 рабочего дня', 'We usually reply within 1 business day')}</p>
-            <span className="text-sm font-medium text-rose-500">{COMPANY.phone}</span>
+            <span className="text-sm font-medium text-rose-500">{company.phone}</span>
           </a>
         </div>
 
@@ -87,11 +90,11 @@ export function ContactPage() {
 
           <section className="text-center py-6">
             <div className="p-6 rounded-xl bg-gray-50">
-              <p className="font-semibold text-gray-800 mb-1">{COMPANY.name}</p>
-              <p className="text-sm text-gray-500">{tr('Регистрационный номер', 'Reg. No.')} {COMPANY.regNo}</p>
-              <p className="text-sm text-gray-500">{COMPANY.address}</p>
-              <a href={`https://${COMPANY.domain}`} className="text-sm text-rose-500 hover:underline mt-2 inline-block">
-                {COMPANY.domain}
+              {companyLines(company, lang).map((line, i) => (
+                <p key={line} className={i === 0 ? 'font-semibold text-gray-800 mb-1' : 'text-sm text-gray-500'}>{line}</p>
+              ))}
+              <a href={`https://${company.domain}`} className="text-sm text-rose-500 hover:underline mt-2 inline-block">
+                {company.domain}
               </a>
             </div>
           </section>

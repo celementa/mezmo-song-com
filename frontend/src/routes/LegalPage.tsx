@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 
-import { COMPANY, LEGAL_LINKS, type LegalDoc } from '@/lib/site'
+import { LEGAL_LINKS, companyFor, companyLines, type LegalDoc } from '@/lib/site'
 import { localePath, useLang, useTr } from '@/lib/lang'
 import { openCookieSettings } from '@/lib/consent'
 
@@ -18,6 +18,9 @@ const DOCS = import.meta.glob<string>(['../legal/*.md', '../legal/en/*.md'], { q
 export function LegalPage({ doc }: { doc: LegalDoc }) {
   const lang = useLang()
   const tr = useTr()
+  // Реквизиты под документом — по языку: русские тексты описывают ООО «МБК»,
+  // английские — Celementa FZCO (см. src/legal и src/legal/en).
+  const company = companyFor(lang)
   const source = DOCS[lang === 'en' ? `../legal/en/${doc}.md` : `../legal/${doc}.md`] ?? ''
 
   return (
@@ -32,8 +35,8 @@ export function LegalPage({ doc }: { doc: LegalDoc }) {
 
         <footer className="mt-12 border-t border-gray-100 pt-6 text-xs leading-relaxed text-gray-400">
           <div>
-            {COMPANY.name} · {tr('Рег. №', 'Reg. No.')} {COMPANY.regNo} · {COMPANY.address} ·{' '}
-            <a href={`mailto:${COMPANY.email}`} className="hover:text-gray-600">{COMPANY.email}</a>
+            {companyLines(company, lang).join(' · ')} ·{' '}
+            <a href={`mailto:${company.email}`} className="hover:text-gray-600">{company.email}</a>
           </div>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
             {LEGAL_LINKS.map((l) => (

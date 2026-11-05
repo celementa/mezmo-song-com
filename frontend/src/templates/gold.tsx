@@ -6,7 +6,7 @@ import { SeekBar } from '@/components/landing/SeekBar'
 import { PaymentLogos } from '@/components/landing/PaymentLogos'
 import { LangSwitch } from '@/components/LangSwitch'
 import { localePath, useLang, useTr } from '@/lib/lang'
-import { COMPANY, LEGAL_LINKS } from '@/lib/site'
+import { LEGAL_LINKS, companyFor, companyLines } from '@/lib/site'
 import { openCookieSettings } from '@/lib/consent'
 import type { LandingData } from '@/hooks/useLandingData'
 import type { TemplateDef } from './types'
@@ -250,6 +250,8 @@ function GoldReactionVideo({ className = '' }: { className?: string }) {
 function GoldRender(data: LandingData) {
   const tr = useTr()
   const lang = useLang()
+  // Реквизиты в футере — по языку страницы (МБК на /ru, FZCO на /en).
+  const company = companyFor(lang)
   const {
     fmtCurrency,
     paymentAmount,
@@ -1266,13 +1268,17 @@ function GoldRender(data: LandingData) {
       {/* === FOOTER WITH SOCIAL ICONS === */}
       <footer className="text-center py-12 px-5">
         <div className="text-xs space-y-1 mb-6" style={{ color: '#6b6558' }}>
-          <div className="font-semibold" style={{ color: '#151210' }}>{COMPANY.name}</div>
-          <div>{tr('Рег. №', 'Reg. No.')} {COMPANY.regNo}</div>
-          <div>{COMPANY.address}</div>
+          {/* Реквизиты по языку страницы: на /ru — российское ООО «МБК»,
+              на /en — Celementa FZCO (см. src/lib/site.ts). */}
+          {companyLines(company, lang).map((line, i) => (
+            <div key={line} className={i === 0 ? 'font-semibold' : undefined} style={i === 0 ? { color: '#151210' } : undefined}>
+              {line}
+            </div>
+          ))}
           <div>
-            <a href={`mailto:${COMPANY.email}`} className="hover:opacity-70 transition">{COMPANY.email}</a>
+            <a href={`mailto:${company.email}`} className="hover:opacity-70 transition">{company.email}</a>
             {' · '}
-            <a href={`tel:${COMPANY.phone.replace(/[^\d+]/g, '')}`} className="hover:opacity-70 transition">{COMPANY.phone}</a>
+            <a href={`tel:${company.phone.replace(/[^\d+]/g, '')}`} className="hover:opacity-70 transition">{company.phone}</a>
           </div>
         </div>
 
@@ -1286,7 +1292,7 @@ function GoldRender(data: LandingData) {
             <a href={localePath('/contacts')} className="hover:opacity-70 transition">{tr('Контакты', 'Contacts')}</a>
             <button type="button" onClick={openCookieSettings} className="hover:opacity-70 transition">{tr('Настройки cookie', 'Cookie settings')}</button>
           </div>
-          <div>© 2026 {COMPANY.name}. {tr('Все права защищены.', 'All rights reserved.')}</div>
+          <div>© 2026 {company.name}. {tr('Все права защищены.', 'All rights reserved.')}</div>
         </div>
       </footer>
 
