@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -58,6 +59,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/orders/{id}/confirm", s.handleOrderConfirm)
 	mux.HandleFunc("POST /api/orders/{id}/apply-discount", s.handleApplyDiscount)
 	mux.HandleFunc("POST /api/orders/{id}/initiate-payment", s.handleInitiatePayment)
+	mux.HandleFunc("POST /api/orders/{id}/payment-branch", s.handleSetPaymentBranch)
 	// Шаги варианта 1: бриф после сбора email, генерация до оплаты и апсейлы.
 	mux.HandleFunc("PATCH /api/orders/{id}/brief", s.handleOrderBrief)
 	mux.HandleFunc("POST /api/orders/{id}/generate-preview", s.handleGeneratePreview)
@@ -82,6 +84,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/emails/log", s.handleAdminEmailLog)
 	s.registerFlow(mux)
 	mux.HandleFunc("POST /api/webhooks/yookassa", s.handleYooWebhook)
+	mux.HandleFunc("POST /api/webhooks/stripe", s.handleStripeWebhook)
 	mux.HandleFunc("GET /api/webhooks/unitpay", s.handleUnitPayWebhook)
 	mux.HandleFunc("POST /api/webhooks/song-ready", s.handleSongReady)
 	mux.HandleFunc("POST /api/webhooks/kie", s.handleKieWebhook)
@@ -195,17 +198,29 @@ func (s *Server) handlePublicSettings(w http.ResponseWriter, r *http.Request) {
 	// trackTestOrders — единственная настройка из БД в публичном ответе: фронт
 	// решает, отбивать ли браузерные события для тестовых (INTERNAL) заказов.
 	resp["trackTestOrders"] = store.GetSetting(r.Context(), s.DB, settingTrackTestOrders, "0") == "1"
-	// Главная по рекламной ссылке с плечом (/?arm=variant1-500) показывает цену
-	// этого плеча, а не базовую: дальше по CTA параметр доедет до /config, и
-	// воронка продаст по той же цене. Неизвестное или выключенное имя — базовая
-	// цена, как и раньше (в воронке такая ссылка тоже уходит в обычную ротацию).
+	// Цена на главной — в валюте языка: /ru в рублях, /en в долларах. Это две
+	// независимые цены плеча, а не пересчёт по курсу. paymentAmount остаётся
+	// историческим полем в долларах для старых клиентов.
+	arm := flowArms[defaultFlowArms[0]]
+	if enabled, ok := s.enabledArm(r.Context(), defaultFlowArms[0]); ok {
+		arm = enabled
+	}
+	usd, rub := s.armPrice(r.Context(), arm), s.armPriceRub(r.Context(), arm)
+	// Главная по рекламной ссылке с плечом (/?arm=variant3-500-750s) показывает
+	// цену этого плеча: дальше по CTA параметр доедет до воронки, и она продаст
+	// по той же цене. Неизвестное или выключенное имя — цена дефолтного плеча.
 	if name := r.URL.Query().Get("arm"); name != "" {
 		if named, ok := armByName(name); ok && named.Route == "" {
-			if arm, ok := s.enabledArm(r.Context(), named.ID); ok {
-				resp["paymentAmount"] = s.armPrice(r.Context(), arm)
+			if enabled, ok := s.enabledArm(r.Context(), named.ID); ok {
+				usd, rub = s.armPrice(r.Context(), enabled), s.armPriceRub(r.Context(), enabled)
 			}
 		}
 	}
+	resp["paymentAmount"] = usd
+	resp["paymentAmountUsd"] = usd
+	resp["paymentAmountRub"] = rub
+	resp["originalAmountUsd"] = originalPriceFromConfig(s.Config)
+	resp["originalAmountRub"] = originalPriceRub
 	writeJSON(w, 200, resp)
 }
 
@@ -237,12 +252,15 @@ func (s *Server) adminSettings(ctx context.Context) map[string]any {
 	for _, id := range KnownFlowArms {
 		arm := flowArms[id]
 		arms = append(arms, map[string]any{
-			"id":      id,
-			"label":   arm.Label,
-			"link":    s.armLink(id),
-			"price":   store.FlowArmPrice(ctx, s.DB, id, s.armFallbackPrice(arm)),
-			"weight":  armWeight(id, weights),
-			"enabled": enabled[id],
+			"id":                   id,
+			"label":                arm.Label,
+			"link":                 s.armLink(id),
+			"price":                store.FlowArmPrice(ctx, s.DB, id, s.armFallbackPrice(arm)),
+			"priceRub":             store.FlowArmPriceRub(ctx, s.DB, id, arm.RubPrice),
+			"subscriptionPrice":    store.FlowArmSubPrice(ctx, s.DB, id, arm.SubscriptionPrice),
+			"subscriptionPriceRub": store.FlowArmSubPriceRub(ctx, s.DB, id, arm.RubSubscriptionPrice),
+			"weight":               armWeight(id, weights),
+			"enabled":              enabled[id],
 		})
 	}
 
@@ -259,6 +277,8 @@ func (s *Server) adminSettings(ctx context.Context) map[string]any {
 		"deliveryDelayMinutes":  int(store.DeliveryDelay(ctx, s.DB).Minutes()),
 		"speedupPrice":          speedup,
 		"stemsPrice":            stems,
+		"ruProvider":            store.PaymentRUProvider(ctx, s.DB),
+		"intlProvider":          store.PaymentIntlProvider(ctx, s.DB),
 	}
 }
 
@@ -276,10 +296,13 @@ const (
 
 // flowArmPatch — правка одного плеча со страницы настроек.
 type flowArmPatch struct {
-	ID      string `json:"id"`
-	Price   *int   `json:"price"`
-	Weight  *int   `json:"weight"`
-	Enabled *bool  `json:"enabled"`
+	ID                   string `json:"id"`
+	Price                *int   `json:"price"`                // разовая, $
+	PriceRub             *int   `json:"priceRub"`             // разовая, ₽
+	SubscriptionPrice    *int   `json:"subscriptionPrice"`    // подписка, $/мес
+	SubscriptionPriceRub *int   `json:"subscriptionPriceRub"` // подписка, ₽/мес
+	Weight               *int   `json:"weight"`
+	Enabled              *bool  `json:"enabled"`
 }
 
 // applyFlowArms сохраняет цены, веса и состав ротации.
@@ -307,6 +330,30 @@ func (s *Server) applyFlowArms(ctx context.Context, patches []flowArmPatch) erro
 				return errOutOfRange
 			}
 			if err := store.SetSetting(ctx, s.DB, store.SettingFlowArmPriceKey(patch.ID), strconv.Itoa(*patch.Price)); err != nil {
+				return err
+			}
+		}
+		if patch.PriceRub != nil {
+			if *patch.PriceRub <= 0 || *patch.PriceRub > maxFlowPrice {
+				return errOutOfRange
+			}
+			if err := store.SetSetting(ctx, s.DB, store.SettingFlowArmPriceRubKey(patch.ID), strconv.Itoa(*patch.PriceRub)); err != nil {
+				return err
+			}
+		}
+		if patch.SubscriptionPrice != nil {
+			if *patch.SubscriptionPrice <= 0 || *patch.SubscriptionPrice > maxFlowPrice {
+				return errOutOfRange
+			}
+			if err := store.SetSetting(ctx, s.DB, store.SettingFlowArmSubPriceKey(patch.ID), strconv.Itoa(*patch.SubscriptionPrice)); err != nil {
+				return err
+			}
+		}
+		if patch.SubscriptionPriceRub != nil {
+			if *patch.SubscriptionPriceRub <= 0 || *patch.SubscriptionPriceRub > maxFlowPrice {
+				return errOutOfRange
+			}
+			if err := store.SetSetting(ctx, s.DB, store.SettingFlowArmSubPriceRubKey(patch.ID), strconv.Itoa(*patch.SubscriptionPriceRub)); err != nil {
 				return err
 			}
 		}
@@ -363,6 +410,8 @@ func (s *Server) handleAdminSettingsPut(w http.ResponseWriter, r *http.Request) 
 		DeliveryDelayMinutes  *int           `json:"deliveryDelayMinutes"`
 		SpeedupPrice          *int           `json:"speedupPrice"`
 		StemsPrice            *int           `json:"stemsPrice"`
+		RUProvider            *string        `json:"ruProvider"`
+		IntlProvider          *string        `json:"intlProvider"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeJSON(w, 400, map[string]string{"error": "bad_request"})
@@ -372,13 +421,34 @@ func (s *Server) handleAdminSettingsPut(w http.ResponseWriter, r *http.Request) 
 		len(body.FlowArms) == 0 && body.PreviewDailyBudget == nil &&
 		body.FreeGenPerVisitor == nil && body.FreeGenPerIP == nil && body.PreviewEnabled == nil &&
 		body.SaveCardInFunnel == nil &&
-		body.DeliveryDelayMinutes == nil && body.SpeedupPrice == nil && body.StemsPrice == nil
+		body.DeliveryDelayMinutes == nil && body.SpeedupPrice == nil && body.StemsPrice == nil &&
+		body.RUProvider == nil && body.IntlProvider == nil
 	if empty {
 		writeJSON(w, 400, map[string]string{"error": "bad_request"})
 		return
 	}
 
 	ctx := r.Context()
+	if body.RUProvider != nil {
+		if v := strings.ToLower(strings.TrimSpace(*body.RUProvider)); v != "yookassa" && v != "unitpay" {
+			writeJSON(w, 400, map[string]string{"error": "bad_provider"})
+			return
+		}
+		if err := store.SetSetting(ctx, s.DB, store.SettingPaymentRUProvider, *body.RUProvider); err != nil {
+			writeJSON(w, 500, map[string]string{"error": "db"})
+			return
+		}
+	}
+	if body.IntlProvider != nil {
+		if v := strings.ToLower(strings.TrimSpace(*body.IntlProvider)); v != "stripe" && v != "unitpay" {
+			writeJSON(w, 400, map[string]string{"error": "bad_provider"})
+			return
+		}
+		if err := store.SetSetting(ctx, s.DB, store.SettingPaymentIntlProvider, *body.IntlProvider); err != nil {
+			writeJSON(w, 500, map[string]string{"error": "db"})
+			return
+		}
+	}
 	if body.TrackTestOrders != nil {
 		value := "0"
 		if *body.TrackTestOrders {
@@ -925,6 +995,7 @@ func (s *Server) handleInitiatePayment(w http.ResponseWriter, r *http.Request) {
 
 	var body struct {
 		Mode string `json:"mode"`
+		Plan string `json:"plan"`
 	}
 	_ = readJSON(r, &body) // пустое тело допустимо: mode остаётся "" → embedded
 	mode := payment.ModeEmbedded
@@ -953,8 +1024,50 @@ func (s *Server) handleInitiatePayment(w http.ResponseWriter, r *http.Request) {
 		// «Открыть страницу заказа» был лишним кликом между оплатой и ними.
 		returnURL = s.publicOrderURL(id)
 	}
-	if s.unitpayConfigured() {
+	// Провайдера выбирает ветка заказа, а не язык сайта: на /en можно платить
+	// российской картой, на /ru — международной. Заказы без ветки сохраняют
+	// прежний порядок (UnitPay, если настроен).
+	provider := s.orderProvider(ctx, o)
+	if !s.providerConfigured(provider) {
+		log.Printf("[pay] initiate order=%s: провайдер %q не настроен", id, provider)
+		writeJSON(w, 503, map[string]string{"error": "payments_unavailable"})
+		return
+	}
+
+	// Подписка вместо разовой покупки: у ЮKassa свой рекуррентный конвейер,
+	// у Stripe — Checkout в режиме subscription.
+	plan := PaymentPlanOneTime
+	if o.PaymentPlan.Valid && o.PaymentPlan.String == PaymentPlanSubscription {
+		plan = PaymentPlanSubscription
+	} else if strings.TrimSpace(body.Plan) == PaymentPlanSubscription {
+		// План ещё не зафиксирован в заказе — не угадываем цену, просим фронт
+		// сначала вызвать payment-branch с планом.
+		writeJSON(w, 409, map[string]string{"error": "plan_not_set"})
+		return
+	}
+	if plan == PaymentPlanSubscription {
+		switch provider {
+		case ProviderYooKassa:
+			s.handleOrderSubscribeInstead(w, r)
+		case ProviderStripe:
+			s.initiateStripe(w, r, o, returnURL)
+		default:
+			writeJSON(w, 503, map[string]string{"error": "subscriptions_unavailable"})
+		}
+		return
+	}
+
+	switch provider {
+	case ProviderUnitPay:
 		s.initiateUnitPay(w, r, o, returnURL)
+		return
+	case ProviderStripe:
+		s.initiateStripe(w, r, o, returnURL)
+		return
+	case ProviderYooKassa:
+		// Ниже — существующий конвейер ЮKassa.
+	default:
+		writeJSON(w, 503, map[string]string{"error": "payments_unavailable"})
 		return
 	}
 	// Токен виджета одноразовый и живёт час, а платёж с capture: true оплачивается
@@ -1085,6 +1198,19 @@ func (s *Server) handlePublicOrderStatus(w http.ResponseWriter, r *http.Request)
 	// оплаченную сумму: та же формула, что у создания платежа и сверки вебхука.
 	paymentAmount := s.expectedPaymentRubles(ctx, o)
 
+	// Валюта и выбор ветки — чтобы воронка после возврата из письма/с оплаты
+	// встала в ту же ветку и не показывала цену в чужой валюте.
+	orderCurrency := s.orderCurrency(o)
+	subscriptionAmount := 0
+	// Цена разовой покупки — из плеча, а не из суммы заказа: base_price хранит
+	// цену ВЫБРАННОГО плана, и после выбора подписки разовая цена из заказа уже
+	// не читается. Нужна экрану «подписка / разовая» при возврате в воронку.
+	oneTimeAmount := 0
+	if arm, ok := flowArms[o.FlowVariant.String]; ok {
+		subscriptionAmount = s.armSubscriptionPriceIn(ctx, arm, orderCurrency)
+		oneTimeAmount = s.armPriceIn(ctx, arm, orderCurrency)
+	}
+
 	// Допники нового флоу: каталог с ценами + состояние по этому заказу.
 	extraPrices := s.extraPrices(ctx, o)
 	paidExtraIDs := []string{}
@@ -1122,6 +1248,12 @@ func (s *Server) handlePublicOrderStatus(w http.ResponseWriter, r *http.Request)
 		"purchaseTrackedAt":        nullStr(o.PurchaseTrackedAt.String),
 		"isTest":                   o.DiscountCode.Valid && o.DiscountCode.String == "INTERNAL",
 		"paymentAmount":            paymentAmount,
+		"currency":                 orderCurrency,
+		"paymentBranch":            nullStr(o.PaymentBranch.String),
+		"paymentPlan":              nullStr(o.PaymentPlan.String),
+		"provider":                 s.orderProvider(ctx, o),
+		"oneTimeAmount":            oneTimeAmount,
+		"subscriptionAmount":       subscriptionAmount,
 		"discountCode":             nullStr(o.DiscountCode.String), // воронка покажет «промокод применён», сумму возьмёт из paymentAmount
 		"pixelConfirmScript":       nil,
 		"tiktokPixelConfirmScript": nil,
@@ -1897,9 +2029,13 @@ func (s *Server) sendServerConversions(orderID string) {
 		return
 	}
 	s.sendConversion(conversion{
-		Label:       "order " + o.ID,
-		TxID:        o.ID,
-		Value:       orderFinalPrice(o),
+		Label: "order " + o.ID,
+		TxID:  o.ID,
+		// Реальная сумма платежа: база минус скидка плюс допники, выбранные до
+		// оплаты. Currency — валюта заказа, а не сайта.
+		Value:       s.expectedPaymentRubles(context.Background(), o),
+		Currency:    s.orderCurrency(o),
+		Email:       extractCustomerEmail(orderID, s.DB),
 		ItemID:      "song",
 		ItemName:    "Персональная песня",
 		GAClientID:  o.GAClientID.String,
@@ -1913,7 +2049,9 @@ func (s *Server) sendServerConversions(orderID string) {
 type conversion struct {
 	Label       string // для логов: "order ord_x" / "subscription sub_x payment …"
 	TxID        string // transaction_id: id заказа или id платежа подписки
-	Value       int    // рубли
+	Value       int    // в валюте заказа, целые единицы
+	Currency    string // RUB | USD — реальная валюта покупки
+	Email       string // для Meta CAPI: хешируется перед отправкой
 	ItemID      string
 	ItemName    string
 	GAClientID  string // из куки _ga; пусто — детерминированный фолбэк по TxID
@@ -1925,6 +2063,69 @@ func (s *Server) sendConversion(c conversion) {
 	s.sendGA4Purchase(c)
 	s.sendMetrikaConversion(c)
 	s.sendVKConversion(c)
+	s.sendMetaConversion(c)
+}
+
+// sendMetaConversion — Meta Conversions API. Событие Purchase с тем же
+// event_id, что браузерный пиксель (сырой id заказа): Meta схлопывает пару в
+// одну покупку. No-op без META_PIXEL_ID/META_ACCESS_TOKEN.
+func (s *Server) sendMetaConversion(c conversion) {
+	if s.Config.MetaPixelID == "" || s.Config.MetaAccessToken == "" {
+		return
+	}
+	currency := c.Currency
+	if currency == "" {
+		currency = s.siteCurrency()
+	}
+	userData := map[string]any{}
+	if email := strings.ToLower(strings.TrimSpace(c.Email)); email != "" {
+		sum := sha256.Sum256([]byte(email))
+		userData["em"] = []string{hex.EncodeToString(sum[:])}
+	}
+	// external_id тоже хешируем: Meta принимает его как стабильный ключ, а сырой
+	// id заказа в открытом виде в рекламный кабинет отдавать незачем.
+	sumID := sha256.Sum256([]byte(c.TxID))
+	userData["external_id"] = []string{hex.EncodeToString(sumID[:])}
+
+	payload := map[string]any{
+		"data": []map[string]any{{
+			"event_name":    "Purchase",
+			"event_time":    time.Now().Unix(),
+			"event_id":      c.TxID,
+			"action_source": "website",
+			"user_data":     userData,
+			"custom_data": map[string]any{
+				"value":        c.Value,
+				"currency":     currency,
+				"content_ids":  []string{c.ItemID},
+				"content_type": "product",
+				"order_id":     c.TxID,
+			},
+		}},
+	}
+	if code := strings.TrimSpace(s.Config.MetaTestEventCode); code != "" {
+		payload["test_event_code"] = code
+	}
+	raw, _ := json.Marshal(payload)
+	endpoint := fmt.Sprintf("https://graph.facebook.com/v20.0/%s/events?access_token=%s",
+		url.PathEscape(s.Config.MetaPixelID), url.QueryEscape(s.Config.MetaAccessToken))
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(raw))
+	if err != nil {
+		log.Printf("meta capi: build request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("meta capi: post: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+		log.Printf("meta capi: status %d for %s: %s", resp.StatusCode, c.Label, body)
+	}
 }
 
 func orderFinalPrice(o store.Order) int {
@@ -1945,6 +2146,10 @@ func (s *Server) sendGA4Purchase(c conversion) {
 		return
 	}
 	value := c.Value
+	currency := c.Currency
+	if currency == "" {
+		currency = s.siteCurrency()
+	}
 
 	// GA4 requires a non-empty client_id. Prefer the browser's _ga client id
 	// captured at draft time; fall back to a deterministic per-transaction id.
@@ -1960,7 +2165,7 @@ func (s *Server) sendGA4Purchase(c conversion) {
 			"params": map[string]any{
 				"transaction_id": c.TxID,
 				"value":          value,
-				"currency":       s.siteCurrency(),
+				"currency":       currency,
 				"items": []map[string]any{{
 					"item_id":   c.ItemID,
 					"item_name": c.ItemName,
@@ -2007,8 +2212,12 @@ func (s *Server) sendMetrikaConversion(c conversion) {
 		return
 	}
 
-	csv := fmt.Sprintf("ClientId,Target,DateTime,Price,Currency\n%s,purchase,%d,%d,RUB\n",
-		clientID, time.Now().Unix(), value)
+	currency := c.Currency
+	if currency == "" {
+		currency = s.siteCurrency()
+	}
+	csv := fmt.Sprintf("ClientId,Target,DateTime,Price,Currency\n%s,purchase,%d,%d,%s\n",
+		clientID, time.Now().Unix(), value, currency)
 
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
@@ -2050,6 +2259,12 @@ func (s *Server) sendMetrikaConversion(c conversion) {
 // No-op без VK_PIXEL_ID.
 func (s *Server) sendVKConversion(c conversion) {
 	if s.Config.VKPixelID == "" {
+		return
+	}
+	// VK Ads принимает выручку без валюты и трактует её как рубли. Долларовую
+	// покупку туда не отправляем: 19 USD, записанные как 19 ₽, хуже пропуска.
+	if c.Currency != "" && c.Currency != CurrencyRUB {
+		log.Printf("vk conversion: %s is in %s, skip (tracker has no currency)", c.Label, c.Currency)
 		return
 	}
 	value := c.Value
@@ -2720,6 +2935,10 @@ func orderProcessingPage(lang string) map[string]string {
 	}
 	return map[string]string{"headline": "Готовим вашу песню", "subtitle": "Это может занять несколько минут."}
 }
+
+// originalPriceRub — зачёркнутая цена для рублёвой витрины. Долларовая
+// (originalPriceFromConfig) и рублёвая заданы независимо, как и основные цены.
+const originalPriceRub = 2990
 
 func originalPriceFromConfig(c config.Config) int {
 	if v := strings.TrimSpace(os.Getenv("ORIGINAL_AMOUNT_RUBLES")); v != "" {

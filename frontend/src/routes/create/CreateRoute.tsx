@@ -20,13 +20,18 @@ import { apiGet, apiPost } from '@/lib/http'
 import { getAttribution } from '@/lib/attribution'
 import { getSessionId } from '@/lib/session'
 import { runOrderPurchaseTracking } from '@/features/analytics/purchaseTracking'
+import { trackPixelEvent } from '@/features/analytics/MetaPixel'
 import { cachedSettingsGet } from '@/lib/settingsCache'
 import { useFlowConfig } from '@/flow/useFlowConfig'
+import { CompareStep } from '@/flow/steps/PaymentSteps'
+import { PaymentMethodStep, type PaymentBranch } from '@/features/payment/PaymentMethodStep'
+import { canSellSubscription } from '@/features/payment/capabilities'
+import { currencyForLang, type OrderCurrency } from '@/lib/currency'
 import type { PaymentMode, PaymentStart } from '@/features/payment/UnitPayCheckout'
 
 import { createStepTracker } from './analytics'
 import { NO_BACK_STEPS, stepsFor, type StepId } from './flowConfig'
-import { EMPTY_FORM, type FlowFormState, type FlowOrderState, type StepProps } from './types'
+import { EMPTY_FORM, shellProps, type FlowFormState, type FlowOrderState, type StepProps } from './types'
 import { resolveVariant, type FlowVariant } from './variant'
 import { answerText, resolveGenre } from '@/flow/types'
 import { getLang, localePath, tr } from '@/lib/lang'
@@ -46,6 +51,12 @@ type OrderStatus = {
   paymentStatus?: string | null
   flow?: string | null
   paymentAmount?: number | null
+  currency?: 'RUB' | 'USD'
+  paymentBranch?: 'ru' | 'intl' | null
+  paymentPlan?: 'onetime' | 'subscription' | null
+  subscriptionAmount?: number | null
+  oneTimeAmount?: number | null
+  provider?: 'yookassa' | 'stripe' | 'unitpay' | null
   discountCode?: string | null
   deliveryHeld?: boolean
   deliveryScheduledAt?: string | null
@@ -180,12 +191,19 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
   // шаг после оплаты не должен появляться и исчезать по приходу ответа.
   const [subscriptionsEnabled, setSubscriptionsEnabled] = useState(false)
   const [subscriptionPrice, setSubscriptionPrice] = useState(15)
+  const [compareEnabled, setCompareEnabled] = useState(false)
+  const [compareDefault, setCompareDefault] = useState<'subscription' | 'onetime'>('onetime')
+  const [currency, setCurrency] = useState<OrderCurrency>(currencyForLang(getLang()))
   const steps = useMemo(() => {
     let list = stepsFor(variant)
     if (generationSkipped) list = list.filter((id) => id !== 'generating' && id !== 'listen')
     if (!subscriptionsEnabled) list = list.filter((id) => id !== 'upsellSub')
+    // Экран «подписка / разовая» есть только у ценовых плеч (500/750s).
+    if (!compareEnabled) list = list.filter((id) => id !== 'compare')
+    // В международной ветке допники скрыты: в макете их нет.
+    if (currency === 'USD') list = list.filter((id) => id !== 'upsellSpeed' && id !== 'upsellStems')
     return list
-  }, [variant, generationSkipped, subscriptionsEnabled])
+  }, [variant, generationSkipped, subscriptionsEnabled, compareEnabled, currency])
   // Плечо приходит вместе с ценой (/api/public/flow) — с ним показы шагов на
   // дашборде разрезаются по плечам, а не только по варианту воронки.
   const [arm, setArm] = useState<string | null>(null)
@@ -217,6 +235,12 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
     extras: [],
     extraPrices: {},
     paymentAmount: null,
+    currency: currencyForLang(getLang()),
+    paymentBranch: null,
+    paymentPlan: null,
+    subscriptionAmount: null,
+    oneTimeAmount: null,
+    provider: null,
     discountCode: null,
     deliveryHeld: false,
     deliverAt: null,
@@ -251,11 +275,22 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
       flowVariant?: string
       subscriptionsEnabled?: boolean
       subscriptionPrice?: number
+      subscriptionPriceRub?: number
+      compareDefault?: 'subscription' | 'onetime' | ''
     }>(`/api/public/flow?sid=${encodeURIComponent(sid)}`)
       .then((cfg) => {
         if (!alive) return
         setSubscriptionsEnabled(cfg?.subscriptionsEnabled === true)
-        if (typeof cfg?.subscriptionPrice === 'number') setSubscriptionPrice(cfg.subscriptionPrice)
+        if (cfg?.compareDefault === 'onetime' || cfg?.compareDefault === 'subscription') {
+          setCompareDefault(cfg.compareDefault)
+        }
+        const branchCurrency = currencyForLang(getLang())
+        if (branchCurrency === 'RUB' && typeof cfg?.subscriptionPriceRub === 'number') {
+          setSubscriptionPrice(cfg.subscriptionPriceRub)
+        } else if (typeof cfg?.subscriptionPrice === 'number') {
+          setSubscriptionPrice(cfg.subscriptionPrice)
+        }
+        if (cfg?.flowVariant?.includes('500-750s')) setCompareEnabled(true)
         const belongsHere = typeof cfg?.route === 'string' && cfg.route.startsWith('/create')
         // Плечо пишем только если ротация действительно привела в эту воронку —
         // прямые заходы по ?v= не должны пачкать разрез теста.
@@ -310,11 +345,26 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
       extras: Array.from(new Set(extras)),
       extraPrices: res.extras?.prices ?? prev.extraPrices,
       paymentAmount: typeof res.paymentAmount === 'number' ? res.paymentAmount : prev.paymentAmount,
+      currency: res.currency === 'RUB' || res.currency === 'USD' ? res.currency : prev.currency,
+      paymentBranch:
+        res.paymentBranch === 'ru' || res.paymentBranch === 'intl' ? res.paymentBranch : prev.paymentBranch,
+      paymentPlan:
+        res.paymentPlan === 'onetime' || res.paymentPlan === 'subscription'
+          ? res.paymentPlan
+          : prev.paymentPlan,
+      subscriptionAmount:
+        typeof res.subscriptionAmount === 'number' ? res.subscriptionAmount : prev.subscriptionAmount,
+      oneTimeAmount: typeof res.oneTimeAmount === 'number' ? res.oneTimeAmount : prev.oneTimeAmount,
+      provider:
+        res.provider === 'yookassa' || res.provider === 'stripe' || res.provider === 'unitpay'
+          ? res.provider
+          : prev.provider,
       discountCode: res.discountCode ?? null,
       deliveryHeld: Boolean(res.deliveryHeld),
       deliverAt: res.deliveryScheduledAt ?? null,
       subscribed: Boolean(res.subscribed),
     }))
+    if (res.currency === 'RUB' || res.currency === 'USD') setCurrency(res.currency)
   }, [])
 
   // Покупка в браузере отбивается один раз на заказ. Точка отбивки нужна
@@ -335,6 +385,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
       purchaseTrackedAt: res.purchaseTrackedAt,
       isTest: res.isTest,
       paymentAmount: res.paymentAmount,
+      currency: res.currency,
       pixelConfirmScript: res.pixelConfirmScript,
       tiktokPixelConfirmScript: res.tiktokPixelConfirmScript,
     })
@@ -498,6 +549,10 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
         reason?: string
       }>('/api/flow/v1/draft', songPayload())
       setOrder((prev) => ({ ...prev, orderId: res.orderId, paymentStatus: res.paymentStatus ?? null }))
+      // Lead — «оформление началось»: то же событие и тот же eventID, что в
+      // воронке /config. Без него Meta видит начало заказа только по покупке,
+      // и оптимизация на /create шла бы вслепую.
+      trackPixelEvent('Lead', { content_name: 'AI Song', currency: 'USD', value: 0 }, `order_created:${res.orderId}`)
       if (res.generationSkipped) {
         // Шаги генерации и прослушивания выпадают; переход к следующему шагу
         // произойдёт уже по отфильтрованному списку.
@@ -534,6 +589,8 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
           ...(ymMatch ? { ymClientId: ymMatch[1] } : {}),
         })
         setOrder((prev) => ({ ...prev, orderId: res.orderId, paymentStatus: res.paymentStatus ?? null }))
+        // Тот же Lead, что в v1 и в /config: событие «оформление началось».
+        trackPixelEvent('Lead', { content_name: 'AI Song', currency: 'USD', value: 0 }, `order_created:${res.orderId}`)
       } else if (order.orderId) {
         await apiPost(`/api/orders/${encodeURIComponent(order.orderId)}/email`, { email, phone })
       }
@@ -632,14 +689,103 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
     async (mode: PaymentMode) => {
       if (!order.orderId) throw new Error('no_order')
       try {
-        return await apiPost<PaymentStart>(`/api/orders/${encodeURIComponent(order.orderId)}/initiate-payment`, { mode })
+        return await apiPost<PaymentStart>(`/api/orders/${encodeURIComponent(order.orderId)}/initiate-payment`, {
+          mode,
+          plan: order.paymentPlan ?? 'onetime',
+        })
       } catch (e) {
         const msg = e instanceof Error ? e.message : ''
         track(stepId, stepIndex, 'error', { code: msg })
         throw e
       }
     },
-    [order.orderId, stepId, stepIndex, track],
+    [order.orderId, order.paymentPlan, stepId, stepIndex, track],
+  )
+
+  /** Ветка оплаты: фиксирует валюту и цену в заказе. */
+  const chooseBranch = useCallback(
+    async (branch: PaymentBranch) => {
+      if (!order.orderId) {
+        setError(tr('Заказ ещё не создан. Заполните анкету заново.', 'The order is not created yet. Please fill the form again.'))
+        return
+      }
+      setBusy(true)
+      setError(null)
+      try {
+        const res = await apiPost<{
+          branch: PaymentBranch
+          currency: OrderCurrency
+          provider: string
+          amount: number
+          oneTimeAmount: number
+          subscriptionAmount: number
+        }>(`/api/orders/${encodeURIComponent(order.orderId)}/payment-branch`, { branch })
+        setOrder((prev) => ({
+          ...prev,
+          paymentBranch: res.branch,
+          currency: res.currency,
+          paymentPlan: 'onetime',
+          paymentAmount: res.amount,
+          oneTimeAmount: res.oneTimeAmount,
+          subscriptionAmount: res.subscriptionAmount,
+          provider: res.provider as 'yookassa' | 'stripe' | 'unitpay',
+        }))
+        setCurrency(res.currency)
+        setPrice(res.amount)
+        // Ветка не умеет подписку (UnitPay) — экран «подписка / разовая»
+        // пропускаем: выбор подписки вернул бы 503 вместо оплаты.
+        if (!canSellSubscription(res.provider) && steps[stepIndex + 1] === 'compare') {
+          setStepIndex((i) => Math.min(i + 2, steps.length - 1))
+        } else {
+          goNext()
+        }
+      } catch {
+        setError(tr('Не получилось сохранить способ оплаты. Попробуйте ещё раз.', "Couldn't save the payment method. Please try again."))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [order.orderId, goNext, steps, stepIndex, tr],
+  )
+
+  /** Тариф на экране сравнения: план и цена фиксируются до оплаты. */
+  const choosePlan = useCallback(
+    async (plan: 'onetime' | 'subscription') => {
+      if (!order.orderId) return
+      setBusy(true)
+      setError(null)
+      try {
+        const res = await apiPost<{
+          branch: PaymentBranch
+          currency: OrderCurrency
+          provider: string
+          amount: number
+          oneTimeAmount: number
+          subscriptionAmount: number
+        }>(`/api/orders/${encodeURIComponent(order.orderId)}/payment-branch`, {
+          branch: order.paymentBranch ?? 'ru',
+          plan,
+        })
+        setOrder((prev) => ({
+          ...prev,
+          paymentBranch: res.branch,
+          currency: res.currency,
+          paymentPlan: plan,
+          paymentAmount: res.amount,
+          oneTimeAmount: res.oneTimeAmount,
+          subscriptionAmount: res.subscriptionAmount,
+          provider: res.provider as 'yookassa' | 'stripe' | 'unitpay',
+        }))
+        setCurrency(res.currency)
+        setPrice(res.amount)
+        goNext()
+      } catch {
+        setError(tr('Не получилось сохранить тариф. Попробуйте ещё раз.', "Couldn't save the plan. Please try again."))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [order.orderId, order.paymentBranch, goNext, tr],
   )
 
   /** Платить нечего: цена обнулилась промокодом, dev-режим или заказ уже оплачен. */
@@ -689,8 +835,13 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
     form,
     setForm,
     order,
-    price,
-    originalPrice,
+    price: order.paymentAmount ?? price,
+    currency: order.currency,
+    subscriptionAmount: order.subscriptionAmount ?? subscriptionPrice,
+    provider:
+      order.provider ??
+      (order.currency === 'RUB' ? 'yookassa' : 'stripe'),
+    originalPrice: order.currency === 'USD' ? originalPrice : 0,
     onNext: goNext,
     onBack: goBack,
     canGoBack,
@@ -762,13 +913,34 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
           onAccept={() => void (paid ? payExtra('speed') : selectExtra('speed'))}
         />
       )
+    case 'paymethod':
+      return (
+        <PaymentMethodStep
+          shell={shellProps(base)}
+          value={order.paymentBranch}
+          onChoose={(branch) => void chooseBranch(branch)}
+        />
+      )
+    case 'compare':
+      return (
+        <CompareStep
+          shell={shellProps(base)}
+          oneTimePrice={order.oneTimeAmount ?? price}
+          subscriptionPrice={order.subscriptionAmount ?? subscriptionPrice}
+          currency={order.currency}
+          defaultChoice={compareDefault === 'onetime' ? 'onetime' : 'subscription'}
+          busy={busy}
+          onSubscribe={() => void choosePlan('subscription')}
+          onOneTime={() => void choosePlan('onetime')}
+        />
+      )
     case 'payment':
       return <PaymentStep {...base} start={startPayment} onPaid={() => void paidWithoutWidget()} />
     case 'upsellSub':
       return (
         <UpsellSubscriptionStep
           {...base}
-          subscriptionPrice={subscriptionPrice}
+          subscriptionPrice={order.subscriptionAmount ?? subscriptionPrice}
           subscribed={order.subscribed}
           onSubscribe={() => void subscribeFromOrder()}
         />

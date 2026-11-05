@@ -93,10 +93,11 @@ func (s *Server) resumeURL(o store.Order) string {
 	}
 	ref := publicOrderRef(s.Config.WebhookSecret, o.ID)
 	path := "/config?arm=" + armLinkName(arm.ID) + "&order=" + url.QueryEscape(ref)
+	// Заказ дооформляется на своём языке: /ru/config или /en/config.
 	if o.Lang() == store.LangEN {
-		path = "/en" + path // английский заказ дооформляется на английской версии
+		return "/en" + path
 	}
-	return path
+	return "/ru" + path
 }
 
 // handlePublicOrderResume отдаёт анкете /config ответы неоплаченного заказа:

@@ -48,7 +48,8 @@ func (s *Server) unitpay() payment.UnitPay {
 	}
 }
 
-// siteCurrency — валюта цен сайта: в ней считаются заказы и уходят конверсии.
+// siteCurrency — валюта цен сайта для заказов, созданных до выбора ветки:
+// в ней считаются такие заказы и уходят их конверсии.
 func (s *Server) siteCurrency() string {
 	if s.unitpayConfigured() {
 		return strings.ToUpper(s.Config.UnitPayCurrency)
@@ -56,16 +57,66 @@ func (s *Server) siteCurrency() string {
 	return "RUB"
 }
 
+// orderCurrency — валюта сумм заказа. У заказов с выбранной веткой она
+// зафиксирована в orders.currency; у старых — валюта сайта. Курс между ними не
+// применяется: ₽ и $ — две независимые цены.
+func (s *Server) orderCurrency(o store.Order) string {
+	if o.Currency.Valid {
+		if c := strings.ToUpper(strings.TrimSpace(o.Currency.String)); c != "" {
+			return c
+		}
+	}
+	return s.siteCurrency()
+}
+
+// orderProvider — кто выставляет счёт по заказу. Ветка важнее глобальной
+// настройки: RU-ветка идёт в ЮKassa, INT — в провайдер из payments.intl_provider.
+// Заказы без ветки сохраняют прежнее поведение (UnitPay, если настроен).
+func (s *Server) orderProvider(ctx context.Context, o store.Order) string {
+	if o.PaymentBranch.Valid {
+		switch strings.ToLower(strings.TrimSpace(o.PaymentBranch.String)) {
+		case PaymentBranchRU:
+			return store.PaymentRUProvider(ctx, s.DB)
+		case PaymentBranchIntl:
+			return store.PaymentIntlProvider(ctx, s.DB)
+		}
+	}
+	if s.unitpayConfigured() {
+		return ProviderUnitPay
+	}
+	if s.yooConfigured() {
+		return ProviderYooKassa
+	}
+	return ""
+}
+
+// providerConfigured — есть ли чем принять деньги выбранным провайдером.
+func (s *Server) providerConfigured(provider string) bool {
+	switch provider {
+	case ProviderUnitPay:
+		return s.unitpayConfigured()
+	case ProviderYooKassa:
+		return s.yooConfigured()
+	case ProviderStripe:
+		return s.stripeConfigured()
+	}
+	return false
+}
+
 // unitpayAmount — сумма и валюта платежа по заказу. Цены сайта целые, в валюте
-// UNITPAY_CURRENCY. Тестовый режим UnitPay принимает только RUB, поэтому там
-// сумма пересчитывается по UNITPAY_TEST_RUB_RATE — сверка уведомления идёт по
-// этой же функции, и пересчёт не расходится с выставленным счётом.
+// заказа. Тестовый режим UnitPay принимает только RUB: долларовую сумму там
+// пересчитываем по UNITPAY_TEST_RUB_RATE, рублёвую оставляем как есть — сверка
+// уведомления идёт по этой же функции, и пересчёт не расходится со счётом.
 func (s *Server) unitpayAmount(ctx context.Context, o store.Order) (sum, currency string) {
 	amount := s.expectedPaymentRubles(ctx, o)
+	currency = s.orderCurrency(o)
 	if s.Config.UnitPayTest {
-		return fmt.Sprintf("%d.00", int(math.Round(float64(amount)*s.Config.UnitPayTestRubRate))), "RUB"
+		if currency == CurrencyUSD {
+			return fmt.Sprintf("%d.00", int(math.Round(float64(amount)*s.Config.UnitPayTestRubRate))), CurrencyRUB
+		}
+		return fmt.Sprintf("%d.00", amount), CurrencyRUB
 	}
-	return fmt.Sprintf("%d.00", amount), strings.ToUpper(s.Config.UnitPayCurrency)
+	return fmt.Sprintf("%d.00", amount), currency
 }
 
 // unitpayAmountMatches сравнивает сумму и валюту из UnitPay с ожидаемыми —
@@ -312,6 +363,11 @@ func (s *Server) reconcileUnitPayOrders(ctx context.Context, now time.Time) int 
 			return settled
 		}
 		for _, id := range paymentHistoryIDs(o, maxPaymentHistory) {
+			// Numeric id — UnitPay. В API UnitPay чужие id (ЮKassa, Stripe)
+			// отправлять нельзя: в ответ приходит «некорректный формат paymentId».
+			if !idLooksUnitPay(id) {
+				continue
+			}
 			p, err := up.GetPayment(id)
 			if err != nil {
 				log.Printf("[reconcile] order=%s payment=%s: get err=%v", o.ID, id, err)

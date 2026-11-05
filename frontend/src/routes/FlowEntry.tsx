@@ -15,7 +15,7 @@ import { localePath, useTr } from '@/lib/lang'
  */
 export function FlowEntry() {
   const state = useFlowConfig()
-  const { pathname, search } = useLocation()
+  const { pathname, search, hash } = useLocation()
   const navigate = useNavigate()
   const tr = useTr()
 
@@ -71,7 +71,15 @@ export function FlowEntry() {
   // ?v закрепится там через variant.ts, так что человек останется в своём
   // варианте и при прямом возврате на /create.
   if (state.config.route) {
-    return <Navigate to={localePath(state.config.route)} replace />
+    // route приходит как "/create?v=2": ?v — часть пути, а рекламные ?arm/UTM
+    // должны доехать до воронки, иначе тест теряет плечо и источник.
+    const [routePath, routeQuery = ''] = state.config.route.split('?')
+    const params = new URLSearchParams(routeQuery)
+    new URLSearchParams(search).forEach((value, key) => {
+      if (!params.has(key)) params.set(key, value)
+    })
+    const query = params.toString()
+    return <Navigate to={{ pathname: localePath(routePath), search: query ? `?${query}` : '', hash }} replace />
   }
 
   return <FlowRoute config={state.config} sessionId={state.sessionId} />

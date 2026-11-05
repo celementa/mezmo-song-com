@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"log"
+	"strings"
 	"time"
 
 	"mezmo-song-com/internal/store"
@@ -54,22 +55,58 @@ func (s *Server) StartPaymentReconciliation(ctx context.Context) {
 	}()
 }
 
-// reconcilePayments — один прогон сверки. Возвращает число зачтённых оплат
-// (для тестов и логов).
+// reconcilePayments — один прогон сверки. Провайдеры сверяются независимо:
+// раньше настроенный UnitPay отменял сверку ЮKassa целиком (`return` на первой
+// ветке), и оплаченные заказы российской ветки висели pending до ручного
+// разбора. В логе это выглядело как «unitpay: error -32602: Некорректный
+// формат paymentId» — id платежей ЮKassa уходили в API UnitPay.
+//
+// Возвращает число зачтённых оплат (для тестов и логов).
 func (s *Server) reconcilePayments(ctx context.Context, now time.Time) int {
+	settled := 0
 	if s.unitpayConfigured() {
-		settled := s.reconcileUnitPayOrders(ctx, now)
-		if settled > 0 {
-			log.Printf("[reconcile] settled %d payment(s) missed by webhook", settled)
-		}
-		return settled
+		settled += s.reconcileUnitPayOrders(ctx, now)
 	}
-	settled := s.reconcileOrders(ctx, now)
-	settled += s.reconcileSubscriptions(ctx)
+	if s.yooConfigured() {
+		settled += s.reconcileOrders(ctx, now)
+		settled += s.reconcileSubscriptions(ctx)
+	}
 	if settled > 0 {
 		log.Printf("[reconcile] settled %d payment(s) missed by webhook", settled)
 	}
 	return settled
+}
+
+// idLooksUnitPay — числовой id: так UnitPay выдаёт счета (44594244033).
+func idLooksUnitPay(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// idLooksStripe — cs_… (Checkout Session) или pi_… (PaymentIntent).
+func idLooksStripe(id string) bool {
+	return strings.HasPrefix(id, "cs_") || strings.HasPrefix(id, "pi_")
+}
+
+// yooKassaPaymentIDs — только те id из истории заказа, что выдала ЮKassa.
+// История накапливается от разных провайдеров (человек вернулся назад и сменил
+// ветку), и чужие id в API ЮKassa отправлять нельзя.
+func yooKassaPaymentIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if idLooksUnitPay(id) || idLooksStripe(id) {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
 }
 
 func (s *Server) reconcileOrders(ctx context.Context, now time.Time) int {
@@ -83,8 +120,14 @@ func (s *Server) reconcileOrders(ctx context.Context, now time.Time) int {
 		if ctx.Err() != nil {
 			return settled
 		}
-		ids := paymentHistoryIDs(o, maxPaymentHistory)
-		allCanceled := len(ids) > 0
+		// В истории заказа могут лежать платежи другого провайдера: человек
+		// вернулся назад и сменил ветку. Их id в API ЮKassa не отправляем, и
+		// исход «все платежи отменены» считаем только по платежам ЮKassa.
+		ids := yooKassaPaymentIDs(paymentHistoryIDs(o, maxPaymentHistory))
+		if len(ids) == 0 {
+			continue
+		}
+		allCanceled := true
 		for _, id := range ids {
 			p, err := s.yoo().GetPayment(id)
 			if err != nil {

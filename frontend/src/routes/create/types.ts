@@ -44,6 +44,22 @@ export type FlowOrderState = {
    * витрине не видны, и показ расходится со списанием.
    */
   paymentAmount: number | null
+  /** Валюта сумм заказа: рубли или доллары. До выбора ветки — валюта языка. */
+  currency: 'RUB' | 'USD'
+  /** Выбранная ветка оплаты; null — ещё не выбрана. */
+  paymentBranch: 'ru' | 'intl' | null
+  /** Что оплачиваем: песню разово или первый месяц подписки. */
+  paymentPlan: 'onetime' | 'subscription' | null
+  /** Цена подписки в валюте заказа — для экрана «подписка / разовая». */
+  subscriptionAmount: number | null
+  /**
+   * Цена разовой покупки в валюте заказа — вторая карточка того же экрана.
+   * Отдельное поле, потому что paymentAmount — цена ВЫБРАННОГО плана: после
+   * выбора подписки из него цену разовой уже не прочитать.
+   */
+  oneTimeAmount: number | null
+  /** Провайдер ветки: yookassa | stripe | unitpay. */
+  provider: 'yookassa' | 'stripe' | 'unitpay' | null
   /** Применённый промокод (с сервера) — пусто, если скидки нет. */
   discountCode: string | null
   /**
@@ -66,8 +82,14 @@ export type StepProps = {
   form: FlowFormState
   setForm: (patch: Partial<FlowFormState>) => void
   order: FlowOrderState
-  /** Цена песни с сервера (paymentAmount), рубли. */
+  /** Цена песни с сервера (paymentAmount) в валюте заказа. */
   price: number
+  /** Валюта заказа — форматирование без пересчёта по курсу. */
+  currency: 'RUB' | 'USD'
+  /** Цена подписки в валюте заказа (для compare/апсейла). */
+  subscriptionAmount: number
+  /** Провайдер ветки; от него зависит форма оплаты. */
+  provider: 'yookassa' | 'stripe' | 'unitpay'
   originalPrice: number
   /** Переход вперёд; шаг сам решает, когда он завершён. */
   onNext: () => void

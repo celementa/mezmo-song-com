@@ -48,9 +48,9 @@ func TestMarketingEventPayload(t *testing.T) {
 		"event_id":       "ord_evt:order_created",
 		"event_type":     "order_created",
 		"payment_status": "pending",
-		"order_url":      "https://example.test/order/" + ref,
+		"order_url":      "https://example.test/ru/order/" + ref,
 		"status_url":     "https://example.test/api/public/order/" + ref + "/status",
-		"checkout_url":   "https://example.test/config?arm=variant3-500-750s&order=" + ref,
+		"checkout_url":   "https://example.test/ru/config?arm=variant3-500-750s&order=" + ref,
 		"flow_arm":       "variant3-500-750s",
 	}
 	for k, v := range want {

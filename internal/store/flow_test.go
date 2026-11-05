@@ -279,3 +279,78 @@ func TestListOrdersDueForDeliverySkipsUnpaid(t *testing.T) {
 		t.Fatalf("due=%+v, want only ord_paid", due)
 	}
 }
+
+// Рублёвая и долларовая цены плеча — два независимых источника, а не курс.
+// Смена одной не двигает другую: иначе $19 и 750 ₽ разъехались бы при первом
+// движении курса.
+func TestFlowArmPricesAreIndependentPerCurrency(t *testing.T) {
+	db := flowTestDB(t)
+	ctx := context.Background()
+
+	if got := FlowArmPrice(ctx, db, "arm", 19); got != 19 {
+		t.Fatalf("usd fallback = %d, want 19", got)
+	}
+	if got := FlowArmPriceRub(ctx, db, "arm", 750); got != 750 {
+		t.Fatalf("rub fallback = %d, want 750", got)
+	}
+	if err := SetSetting(ctx, db, SettingFlowArmPriceKey("arm"), "21"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetSetting(ctx, db, SettingFlowArmPriceRubKey("arm"), "800"); err != nil {
+		t.Fatal(err)
+	}
+	if got := FlowArmPrice(ctx, db, "arm", 19); got != 21 {
+		t.Fatalf("usd = %d, want 21", got)
+	}
+	if got := FlowArmPriceRub(ctx, db, "arm", 750); got != 800 {
+		t.Fatalf("rub = %d, want 800 (курс не применяется)", got)
+	}
+}
+
+// Ноль и мусор в настройке не должны делать песню бесплатной: цена падает
+// обратно на значение из определения плеча.
+func TestFlowArmPricesRejectNonPositive(t *testing.T) {
+	db := flowTestDB(t)
+	ctx := context.Background()
+	for _, key := range []string{
+		SettingFlowArmPriceRubKey("arm"),
+		SettingFlowArmSubPriceKey("arm"),
+		SettingFlowArmSubPriceRubKey("arm"),
+	} {
+		if err := SetSetting(ctx, db, key, "0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := FlowArmPriceRub(ctx, db, "arm", 750); got != 750 {
+		t.Fatalf("rub price = %d, want fallback 750", got)
+	}
+	if got := FlowArmSubPrice(ctx, db, "arm", 15); got != 15 {
+		t.Fatalf("usd subscription = %d, want fallback 15", got)
+	}
+	if got := FlowArmSubPriceRub(ctx, db, "arm", 500); got != 500 {
+		t.Fatalf("rub subscription = %d, want fallback 500", got)
+	}
+}
+
+func TestPaymentProvidersDefaultsAndFallback(t *testing.T) {
+	db := flowTestDB(t)
+	ctx := context.Background()
+	if got := PaymentIntlProvider(ctx, db); got != "stripe" {
+		t.Fatalf("intl default = %q, want stripe", got)
+	}
+	if got := PaymentRUProvider(ctx, db); got != "yookassa" {
+		t.Fatalf("ru default = %q, want yookassa", got)
+	}
+	if err := SetSetting(ctx, db, SettingPaymentIntlProvider, "unitpay"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetSetting(ctx, db, SettingPaymentRUProvider, "мусор"); err != nil {
+		t.Fatal(err)
+	}
+	if got := PaymentIntlProvider(ctx, db); got != "unitpay" {
+		t.Fatalf("intl = %q, want unitpay", got)
+	}
+	if got := PaymentRUProvider(ctx, db); got != "yookassa" {
+		t.Fatalf("ru fallback = %q, want yookassa", got)
+	}
+}

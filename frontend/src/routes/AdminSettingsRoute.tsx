@@ -14,6 +14,9 @@ type FlowArm = {
   /** Готовая ссылка «открыть это плечо» — её копируют в рекламные кампании. */
   link: string
   price: number
+  priceRub: number
+  subscriptionPrice: number
+  subscriptionPriceRub: number
   weight: number
   enabled: boolean
 }
@@ -34,10 +37,20 @@ type Settings = {
   deliveryDelayMinutes: number
   speedupPrice: number
   stemsPrice: number
+  ruProvider: 'yookassa' | 'unitpay'
+  intlProvider: 'stripe' | 'unitpay'
 }
 
 type SettingsPatch = Partial<Omit<Settings, 'flowArms'>> & {
-  flowArms?: { id: string; price?: number; weight?: number; enabled?: boolean }[]
+  flowArms?: {
+    id: string
+    price?: number
+    priceRub?: number
+    subscriptionPrice?: number
+    subscriptionPriceRub?: number
+    weight?: number
+    enabled?: boolean
+  }[]
 }
 
 /** Обёртка одной настройки: заголовок, объяснение и сам контрол справа. */
@@ -235,6 +248,38 @@ export function AdminSettingsRoute() {
 
         {settings && (
           <>
+            <h2 className="mb-3 mt-8 text-lg font-bold text-gray-900">Платёжные провайдеры</h2>
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+              <SettingRow
+                title="Российская ветка"
+                hint="Чем принимать рубли. По умолчанию ЮKassa; UnitPay остаётся запасным вариантом. Переключение действует без деплоя."
+              >
+                <select
+                  value={settings.ruProvider}
+                  disabled={busy}
+                  onChange={(e) => save({ ruProvider: e.target.value as 'yookassa' | 'unitpay' })}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="yookassa">ЮKassa</option>
+                  <option value="unitpay">UnitPay</option>
+                </select>
+              </SettingRow>
+              <SettingRow
+                title="Международная ветка"
+                hint="Чем принимать доллары. По умолчанию Stripe; UnitPay — на случай, если он пройдёт проверку. Переключение действует без деплоя."
+              >
+                <select
+                  value={settings.intlProvider}
+                  disabled={busy}
+                  onChange={(e) => save({ intlProvider: e.target.value as 'stripe' | 'unitpay' })}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="stripe">Stripe</option>
+                  <option value="unitpay">UnitPay</option>
+                </select>
+              </SettingRow>
+            </div>
+
             <h2 className="mb-3 mt-8 text-lg font-bold text-gray-900">A/B-тест флоу</h2>
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
               {settings.flowArms.map((arm) => (
@@ -259,6 +304,39 @@ export function AdminSettingsRoute() {
                         min={1}
                         max={100000}
                         onCommit={(v) => save({ flowArms: [{ id: arm.id, price: v }] })}
+                        disabled={busy}
+                      />
+                    </label>
+                    <label className="flex flex-col text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                      Цена, ₽
+                      <LimitInput
+                        key={`priceRub-${arm.id}-${arm.priceRub}`}
+                        value={arm.priceRub}
+                        min={1}
+                        max={100000}
+                        onCommit={(v) => save({ flowArms: [{ id: arm.id, priceRub: v }] })}
+                        disabled={busy}
+                      />
+                    </label>
+                    <label className="flex flex-col text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                      Подписка, $
+                      <LimitInput
+                        key={`subUsd-${arm.id}-${arm.subscriptionPrice}`}
+                        value={arm.subscriptionPrice}
+                        min={1}
+                        max={100000}
+                        onCommit={(v) => save({ flowArms: [{ id: arm.id, subscriptionPrice: v }] })}
+                        disabled={busy}
+                      />
+                    </label>
+                    <label className="flex flex-col text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                      Подписка, ₽
+                      <LimitInput
+                        key={`subRub-${arm.id}-${arm.subscriptionPriceRub}`}
+                        value={arm.subscriptionPriceRub}
+                        min={1}
+                        max={100000}
+                        onCommit={(v) => save({ flowArms: [{ id: arm.id, subscriptionPriceRub: v }] })}
                         disabled={busy}
                       />
                     </label>

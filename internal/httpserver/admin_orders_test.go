@@ -65,3 +65,28 @@ func TestAdminOrdersCSVHasPaymentKindProviderAndFullURL(t *testing.T) {
 		t.Fatalf("тестовый заказ: kind=%q", byID["ord_int"][col["payment_kind"]])
 	}
 }
+
+// Рублёвый заказ Stripe/ЮKassa не должен показываться как долларовый: в CSV
+// валюта, провайдер и ветка идут из заказа, а не из глобальной настройки сайта.
+func TestAdminOrdersCSVKeepsCurrencyAndProvider(t *testing.T) {
+	s, id := newUnitPayTestServer(t, configForCSV())
+	ctx := context.Background()
+	if _, err := s.DB.ExecContext(ctx, `UPDATE orders SET currency = 'RUB', payment_branch = 'ru',
+		payment_provider = 'yookassa', base_price = 750, payment_status = 'paid' WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	s.handleAdminOrdersCSV(rec, httptest.NewRequest("GET", "/api/admin/orders.csv", nil))
+	rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(rec.Body.String(), "\xEF\xBB\xBF"))).ReadAll()
+	if err != nil {
+		t.Fatalf("csv: %v", err)
+	}
+	col := map[string]int{}
+	for i, name := range rows[0] {
+		col[name] = i
+	}
+	row := rows[1]
+	if row[col["currency"]] != "RUB" || row[col["payment_provider"]] != "yookassa" || row[col["payment_branch"]] != "ru" {
+		t.Fatalf("currency=%q provider=%q branch=%q", row[col["currency"]], row[col["payment_provider"]], row[col["payment_branch"]])
+	}
+}

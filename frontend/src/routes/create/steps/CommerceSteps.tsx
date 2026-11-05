@@ -12,13 +12,11 @@ import { Check, Download, PartyPopper, Zap } from 'lucide-react'
 
 import { GOLD, StepShell } from '../StepShell'
 import { UnitPayCheckout, type PaymentMode, type PaymentStart } from '@/features/payment/UnitPayCheckout'
-import { fmtCurrency } from '@/routes/config/utils'
+import { canSellSubscription } from '@/features/payment/capabilities'
+import { formatMoney } from '@/lib/currency'
 import { shellProps, type StepProps } from '../types'
 import { intlLocale, tr as trText, useTr } from '@/lib/lang'
 import { reportEngagement } from '@/lib/engagement'
-
-// Цены .com в долларах; «$ / ₽» на шаге оплаты переключает показ.
-const rub = (n: number) => fmtCurrency(n)
 
 /** Время доставки в человеческом виде; мусор в дате не должен ломать экран. */
 function formatTime(iso: string): string {
@@ -31,6 +29,7 @@ function formatTime(iso: string): string {
 /** Апсейл ускорения. До оплаты — в основной платёж, после — доплата. */
 export function UpsellSpeedStep(p: StepProps & { onAccept: () => void; afterPayment: boolean }) {
   const tr = useTr()
+  const money = (n: number) => formatMoney(n, p.currency)
   const price = p.order.extraPrices.speed ?? 0
   const already = p.order.extras.includes('speed')
 
@@ -62,7 +61,7 @@ export function UpsellSpeedStep(p: StepProps & { onAccept: () => void; afterPaym
               'Songs usually take about 2 hours. Add the speed-up and get yours in 10–30 minutes.',
             )
       }
-      primaryLabel={already ? tr('Далее', 'Next') : tr(`Добавить за ${rub(price)}`, `Add for ${rub(price)}`)}
+      primaryLabel={already ? tr('Далее', 'Next') : tr(`Добавить за ${money(price)}`, `Add for ${money(price)}`)}
       onPrimary={() => {
         if (already) {
           p.onNext()
@@ -83,11 +82,11 @@ export function UpsellSpeedStep(p: StepProps & { onAccept: () => void; afterPaym
             <Zap className="h-5 w-5 text-[#151210]" />
           </span>
           <div>
-            <div className="text-sm font-bold text-[#151210]">+{rub(price)}</div>
+            <div className="text-sm font-bold text-[#151210]">+{money(price)}</div>
             <div className="text-xs text-[#6b6259]">
               {p.afterPayment
                 ? tr('Отдельный платёж', 'Separate payment')
-                : tr(`итого ${rub(p.price + price)}`, `total ${rub(p.price + price)}`)}
+                : tr(`итого ${money(p.price + price)}`, `total ${money(p.price + price)}`)}
             </div>
           </div>
         </div>
@@ -115,6 +114,8 @@ export function PaymentStep(p: StepProps & { start: (mode: PaymentMode) => Promi
     <UnitPayCheckout
       shell={shellProps(p)}
       amount={total}
+      currency={p.currency}
+      provider={p.provider}
       original={p.originalPrice}
       summary={
         p.form.email ? <p>{tr(`Ссылка на песню придёт на ${p.form.email}`, `The song link will be sent to ${p.form.email}`)}</p> : null
@@ -138,6 +139,15 @@ export function UpsellSubscriptionStep(
   p: StepProps & { subscriptionPrice: number; subscribed: boolean; onSubscribe: () => void },
 ) {
   const tr = useTr()
+  const money = (n: number) => formatMoney(n, p.currency)
+  // Ветка на UnitPay подписку оформить не может (рекуррентка не включена):
+  // «subscribe» ответил бы 503, а человек уже заплатил за песню. Пропускаем шаг.
+  const unsupported = !canSellSubscription(p.provider)
+  useEffect(() => {
+    if (unsupported) p.onNext()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unsupported])
+  if (unsupported) return null
   return (
     <StepShell
       {...shellProps(p)}
@@ -171,7 +181,7 @@ export function UpsellSubscriptionStep(
           <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#9c9186]">
             {tr('То, что вы купили', 'What you bought')}
           </div>
-          <div className="mt-1.5 text-xl font-bold text-[#151210]">{rub(p.price)}</div>
+          <div className="mt-1.5 text-xl font-bold text-[#151210]">{money(p.price)}</div>
           <div className="text-xs text-[#9c9186]">{tr('разово, 1 песня', 'one-time, 1 song')}</div>
           <ul className="mt-3 space-y-1.5 text-xs text-[#6b6259]">
             <li>• {tr('1 готовая песня', '1 finished song')}</li>
@@ -204,8 +214,8 @@ export function UpsellSubscriptionStep(
       ) : (
         <p className="mt-3 text-center text-xs text-[#9c9186]">
           {tr(
-            `Далее — ${rub(p.subscriptionPrice)}/мес, спишем через месяц. Отмена в любой момент.`,
-            `Next — ${rub(p.subscriptionPrice)}/month, billed in a month. Cancel anytime.`,
+            `Далее — ${money(p.subscriptionAmount)}/мес, спишем через месяц. Отмена в любой момент.`,
+            `Next — ${money(p.subscriptionAmount)}/month, billed in a month. Cancel anytime.`,
           )}
         </p>
       )}
@@ -216,9 +226,13 @@ export function UpsellSubscriptionStep(
 /** Апсейл стемов — доплата после оплаты песни. */
 export function UpsellStemsStep(p: StepProps & { onAccept: () => void }) {
   const tr = useTr()
+  const money = (n: number) => formatMoney(n, p.currency)
   // Как и у ускорения: нулевая цена значит «отдать нечем» (разделение дорожек
-  // у Kie.ai не подключено), и шаг пропускается.
-  const stemsDisabled = Object.keys(p.order.extraPrices).length > 0 && (p.order.extraPrices.stems ?? 0) <= 0
+  // у Kie.ai не подключено), и шаг пропускается. В международной ветке стемы
+  // не продаём вовсе — по решению продукта, даже если цена задана.
+  const stemsDisabled =
+    p.currency === 'USD' ||
+    (Object.keys(p.order.extraPrices).length > 0 && (p.order.extraPrices.stems ?? 0) <= 0)
   useEffect(() => {
     if (stemsDisabled) p.onNext()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -239,7 +253,7 @@ export function UpsellStemsStep(p: StepProps & { onAccept: () => void }) {
       )}
       // Допник уже куплен (возврат с отдельного платежа): единственная дорога
       // дальше — «Далее», а не «Не нужно» под только что оплаченным.
-      primaryLabel={already ? tr('Далее', 'Next') : tr(`Да, добавить за ${rub(price)}`, `Yes, add for ${rub(price)}`)}
+      primaryLabel={already ? tr('Далее', 'Next') : tr(`Да, добавить за ${money(price)}`, `Yes, add for ${money(price)}`)}
       onPrimary={() => {
         if (already) {
           p.onNext()
@@ -256,8 +270,8 @@ export function UpsellStemsStep(p: StepProps & { onAccept: () => void }) {
     >
       <div className="rounded-2xl border border-[#EFE4D2] bg-[#FDFBF7] p-4 text-sm text-[#6b6259]">
         {tr(
-          `Отдельный платёж на ${rub(price)} — вернёмся сюда сразу после оплаты.`,
-          `A separate payment of ${rub(price)} — we will bring you back here right after it.`,
+          `Отдельный платёж на ${money(price)} — вернёмся сюда сразу после оплаты.`,
+          `A separate payment of ${money(price)} — we will bring you back here right after it.`,
         )}
       </div>
       {already ? (

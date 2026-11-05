@@ -96,8 +96,18 @@ type Subscription struct {
 	PendingPaymentID sql.NullString
 	// PriceRub — цена подписки, зафиксированная при оформлении (плечо теста
 	// может продавать подписку дешевле общей). 0 — цена по умолчанию.
-	PriceRub  int
-	CreatedAt time.Time
+	PriceRub int
+	// Provider — кто ведёт подписку: yookassa (локальные ребиллы) | stripe
+	// (продления на стороне Stripe, локальный планировщик её не трогает).
+	Provider sql.NullString
+	// Currency — валюта цены подписки: RUB | USD. У старых подписок пусто —
+	// считается RUB.
+	Currency sql.NullString
+	// StripeSubscriptionID / StripeCustomerID — идентификаторы Stripe Billing:
+	// по ним приходят invoice.paid и customer.subscription.deleted.
+	StripeSubscriptionID sql.NullString
+	StripeCustomerID     sql.NullString
+	CreatedAt            time.Time
 }
 
 // AccessUntilTime — access_until как время; нулевое время, если доступа не было.
@@ -188,6 +198,13 @@ CREATE TABLE IF NOT EXISTS subscription_sessions (
 	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN ga_client_id TEXT`)
 	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN ym_client_id TEXT`)
 	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN pending_payment_id TEXT`)
+	// provider/currency/stripe_* — подписки Stripe Billing. Продления у них
+	// ведёт Stripe (invoice.paid), локальный планировщик их не трогает; поэтому
+	// провайдер и валюта хранятся рядом с ценой.
+	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN provider TEXT`)
+	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN currency TEXT`)
+	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN stripe_subscription_id TEXT`)
+	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN stripe_customer_id TEXT`)
 	// Заказы подписчиков связываются с подпиской напрямую — список «мои песни»
 	// в кабинете и суточный лимит считаются по этой колонке.
 	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN subscription_id TEXT`)
@@ -266,7 +283,7 @@ func UpsertPendingSubscription(ctx context.Context, db *sql.DB, email, name stri
 
 const subColumns = `id, email, customer_name, status, yoo_payment_method_id, access_until, next_charge_at,
 	cancel_token, reminder_sent_for, last_charge_attempt_at, attribution, price_rub, created_at,
-	ga_client_id, ym_client_id, pending_payment_id`
+	ga_client_id, ym_client_id, pending_payment_id, provider, currency, stripe_subscription_id, stripe_customer_id`
 
 func scanSubscription(row interface{ Scan(...any) error }) (Subscription, error) {
 	var s Subscription
@@ -274,7 +291,8 @@ func scanSubscription(row interface{ Scan(...any) error }) (Subscription, error)
 	var price sql.NullInt64
 	err := row.Scan(&s.ID, &s.Email, &s.CustomerName, &s.Status, &s.YooMethodID, &s.AccessUntil,
 		&s.NextChargeAt, &s.CancelToken, &s.ReminderSentFor, &s.LastAttemptAt, &s.AttributionJSON, &price, &created,
-		&s.GAClientID, &s.YMClientID, &s.PendingPaymentID)
+		&s.GAClientID, &s.YMClientID, &s.PendingPaymentID, &s.Provider, &s.Currency,
+		&s.StripeSubscriptionID, &s.StripeCustomerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, ErrNotFound
 	}
@@ -573,6 +591,8 @@ func ForceSubscriptionChargeDue(ctx context.Context, db *sql.DB, subID string, n
 // Это апсейл «безлимит за 0 ₽ сегодня» после оплаты песни: карта сохранена
 // платежом за песню, а сама песня и есть первый месяц. Возвращает false, если
 // подписка уже активна — второй раз бесплатный месяц не выдаётся.
+// ActivateSubscriptionWithMethod — первый платёж ЮKassa: карта сохранена,
+// доступ на месяц, следующее списание через календарный месяц.
 func ActivateSubscriptionWithMethod(ctx context.Context, db *sql.DB, subID, methodID string, now time.Time) (bool, error) {
 	until := AddCalendarMonth(now.UTC()).Format(time.RFC3339)
 	res, err := db.ExecContext(ctx, `
@@ -586,6 +606,57 @@ func ActivateSubscriptionWithMethod(ctx context.Context, db *sql.DB, subID, meth
 	}
 	n, _ := res.RowsAffected()
 	return n > 0, nil
+}
+
+// ActivateStripeSubscription — первая оплата подписки Stripe. Продления ведёт
+// Stripe, поэтому next_charge_at пустой: локальный планировщик такую подписку
+// не трогает, а доступ продлевает invoice.paid. periodEnd — current_period_end
+// подписки из Stripe.
+func ActivateStripeSubscription(ctx context.Context, db *sql.DB, subID, stripeSubID, customerID, currency string, price int, periodEnd time.Time) (bool, error) {
+	now := time.Now().UTC()
+	if periodEnd.IsZero() {
+		periodEnd = AddCalendarMonth(now)
+	}
+	res, err := db.ExecContext(ctx, `
+		UPDATE subscriptions SET
+			status = ?, provider = 'stripe', currency = ?, stripe_subscription_id = ?,
+			stripe_customer_id = ?, price_rub = ?, access_until = ?, next_charge_at = NULL,
+			yoo_payment_method_id = NULL, reminder_sent_for = NULL, updated_at = ?
+		WHERE id = ?`,
+		SubActive, strings.ToUpper(currency), stripeSubID, customerID, price,
+		periodEnd.UTC().Format(time.RFC3339), now.Format(time.RFC3339), subID)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// ExtendStripeSubscription продлевает доступ по invoice.paid. Идемпотентно:
+// повторный вебхук ставит ту же дату.
+func ExtendStripeSubscription(ctx context.Context, db *sql.DB, stripeSubID string, periodEnd time.Time) error {
+	if stripeSubID == "" || periodEnd.IsZero() {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, `
+		UPDATE subscriptions SET status = ?, access_until = ?, updated_at = ?
+		WHERE stripe_subscription_id = ?`,
+		SubActive, periodEnd.UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), stripeSubID)
+	return err
+}
+
+// CancelStripeSubscription помечает подписку отменённой. Доступ не отнимается:
+// он живёт до access_until, как и у отменённой подписки ЮKassa.
+func CancelStripeSubscription(ctx context.Context, db *sql.DB, stripeSubID string) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE subscriptions SET status = ?, next_charge_at = NULL, updated_at = ?
+		WHERE stripe_subscription_id = ?`,
+		SubCanceled, time.Now().UTC().Format(time.RFC3339), stripeSubID)
+	return err
+}
+
+func GetSubscriptionByStripeID(ctx context.Context, db *sql.DB, stripeSubID string) (Subscription, error) {
+	return scanSubscription(db.QueryRowContext(ctx, `SELECT `+subColumns+` FROM subscriptions WHERE stripe_subscription_id = ?`, stripeSubID))
 }
 
 // GiftSubscriptionAccess выдаёт месяц доступа без карты и без списаний: статус
@@ -639,6 +710,7 @@ func ListDueSubscriptionCharges(ctx context.Context, db *sql.DB, now time.Time, 
 		SELECT `+subColumns+` FROM subscriptions
 		WHERE status IN (?, ?)
 		  AND yoo_payment_method_id IS NOT NULL AND yoo_payment_method_id != ''
+		  AND COALESCE(provider, 'yookassa') <> 'stripe'
 		  AND `+notMockMethodSQL+`
 		  AND next_charge_at IS NOT NULL AND next_charge_at <= ?
 		  AND next_charge_at > ?
@@ -710,6 +782,7 @@ func ListSubscriptionsNeedingReminder(ctx context.Context, db *sql.DB, now time.
 	rows, err := db.QueryContext(ctx, `
 		SELECT `+subColumns+` FROM subscriptions
 		WHERE status = ?
+		  AND COALESCE(provider, 'yookassa') <> 'stripe'
 		  AND `+notMockMethodSQL+`
 		  AND next_charge_at IS NOT NULL
 		  AND next_charge_at > ?

@@ -15,6 +15,9 @@ import { clearFlowDraft, loadFlowDraft, saveFlowDraft, searchWithStep, stepFromS
 import { EmailStep, EmotionStep, OccasionStep, RecipientStep, StoryStep, answersGenre } from './steps/BriefSteps'
 import { GeneratingStep, PreviewStep, SpeedupStep } from './steps/GenerationSteps'
 import { CheckoutStep, CompareStep } from './steps/PaymentSteps'
+import { PaymentMethodStep, type PaymentBranch } from '@/features/payment/PaymentMethodStep'
+import { canSellSubscription } from '@/features/payment/capabilities'
+import { currencyForLang } from '@/lib/currency'
 import type { PaymentMode, PaymentStart } from '@/features/payment/UnitPayCheckout'
 
 /**
@@ -31,7 +34,7 @@ import type { PaymentMode, PaymentStart } from '@/features/payment/UnitPayChecko
  */
 
 /** Шаги, которые рисует этот компонент. Остальные из config.steps — чужие. */
-const OWNED_STEPS = ['recipient', 'occasion', 'email', 'emotion', 'story', 'generating', 'preview', 'speedup', 'compare', 'payment']
+const OWNED_STEPS = ['recipient', 'occasion', 'email', 'emotion', 'story', 'generating', 'preview', 'paymethod', 'speedup', 'compare', 'payment']
 
 // Стрелку к подписи дорисовывает StepShell.
 const NEXT_LABEL: Record<string, [string, string]> = {
@@ -50,6 +53,16 @@ const STATUS_POLL_MS = 3000
 type OrderContent = {
   orders: unknown[]
   previewUrl: string | null
+}
+
+type PaymentChoice = {
+  branch: PaymentBranch
+  currency: 'RUB' | 'USD'
+  provider: string
+  amount: number
+  /** Цена разовой покупки — для карточки «разовая» на экране сравнения. */
+  oneTimeAmount: number
+  subscriptionAmount: number
 }
 
 export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId: string }) {
@@ -89,10 +102,19 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
    * ценового плеча, первый платёж подписки вместо разовой покупки.
    */
   const [payVia, setPayVia] = useState<'order' | 'subscription'>(draft?.payVia ?? 'order')
+  const [paymentChoice, setPaymentChoice] = useState<PaymentChoice | null>(null)
 
   // Список своих шагов считается ПОСЛЕ хуков состояния: вызов filter до них
   // сбивает React Compiler, и он бросает мемоизацию всего компонента.
-  const ownSteps = config.steps.filter((step) => OWNED_STEPS.includes(step))
+  //
+  // Экран сравнения живёт только там, где подписку можно оплатить: в ветке
+  // UnitPay (рекуррентка не включена) выбор подписки вернул бы 503, и человек
+  // выбирал бы план, который нельзя купить. До выбора ветки шаг остаётся —
+  // убираем его, когда провайдер уже известен.
+  const branchSellsSubscription = paymentChoice ? canSellSubscription(paymentChoice.provider) : true
+  const ownSteps = config.steps.filter(
+    (step) => OWNED_STEPS.includes(step) && (step !== 'compare' || branchSellsSubscription),
+  )
   const lastStep = ownSteps.length - 1
   const paymentIdx = ownSteps.indexOf('payment')
   const current = ownSteps[Math.min(stepIndex, lastStep)] ?? 'recipient'
@@ -165,6 +187,43 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
       alive = false
     }
   }, [checkingPaid, draftOrderRef, fromHistory, setStep, paymentIdx, config.flowVariant, answers, orderRef, payVia])
+
+  // Возврат с оплаты или по ссылке из письма: ветка и валюта уже записаны в
+  // заказ. Восстанавливаем их, чтобы человек попал в свою ветку, а не увидел
+  // цену в чужой валюте.
+  useEffect(() => {
+    if (!orderRef) return
+    let alive = true
+    apiGet<{
+      paymentBranch?: string | null
+      currency?: string | null
+      paymentAmount?: number | null
+      oneTimeAmount?: number | null
+      subscriptionAmount?: number | null
+      paymentPlan?: string | null
+      provider?: string | null
+    }>(`/api/public/order/${encodeURIComponent(orderRef)}/status`)
+      .then((st) => {
+        if (!alive) return
+        if (st.paymentBranch !== 'ru' && st.paymentBranch !== 'intl') return
+        if (st.currency !== 'RUB' && st.currency !== 'USD') return
+        setPaymentChoice({
+          branch: st.paymentBranch,
+          currency: st.currency,
+          provider: typeof st.provider === 'string' ? st.provider : '',
+          amount: typeof st.paymentAmount === 'number' ? st.paymentAmount : 0,
+          oneTimeAmount: typeof st.oneTimeAmount === 'number' ? st.oneTimeAmount : 0,
+          subscriptionAmount: typeof st.subscriptionAmount === 'number' ? st.subscriptionAmount : 0,
+        })
+        if (st.paymentPlan === 'subscription') setPayVia('subscription')
+      })
+      .catch(() => {
+        // статус не ответил — человек выберет ветку заново
+      })
+    return () => {
+      alive = false
+    }
+  }, [orderRef])
 
   // Восстановление по ref: ответы с сервера, шаг — первый незаполненный после
   // email. Заказ другого плеча, оплаченный или уже в генерации восстановить
@@ -261,22 +320,56 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
     [setStep],
   )
 
-  /** Платёж за песню; return_url ставит сервер (/order/{ref}). */
+  /** Платёж за заказ; return_url ставит сервер (/order/{ref}). */
   const startPayment = useCallback(
-    (mode: PaymentMode) => {
+    (mode: PaymentMode, plan: 'onetime' | 'subscription' = 'onetime') => {
       if (!orderRef) return Promise.reject(new Error('no_order'))
-      return apiPost<PaymentStart>(`/api/orders/${encodeURIComponent(orderRef)}/initiate-payment`, { mode })
+      return apiPost<PaymentStart>(`/api/orders/${encodeURIComponent(orderRef)}/initiate-payment`, { mode, plan })
     },
     [orderRef],
   )
 
-  /** Ценовое плечо: подписка вместо разовой покупки — первый платёж подписки. */
-  const startSubscription = useCallback(
-    (mode: PaymentMode) => {
-      if (!orderRef) return Promise.reject(new Error('no_order'))
-      return apiPost<PaymentStart>(`/api/orders/${encodeURIComponent(orderRef)}/subscribe-instead`, { mode })
+  /** Выбор ветки оплаты: фиксирует валюту и цену в заказе. */
+  const chooseBranch = useCallback(
+    async (branch: PaymentBranch) => {
+      if (!orderRef) {
+        setError(tr('Заказ ещё не создан. Заполните анкету заново.', 'The order is not created yet. Please fill the form again.'))
+        return
+      }
+      setBusy(true)
+      setError(null)
+      try {
+        const res = await apiPost<PaymentChoice>(`/api/orders/${encodeURIComponent(orderRef)}/payment-branch`, { branch })
+        setPaymentChoice(res)
+        advance(orderRef)
+      } catch {
+        setError(tr('Не получилось сохранить способ оплаты. Попробуйте ещё раз.', "Couldn't save the payment method. Please try again."))
+      } finally {
+        setBusy(false)
+      }
     },
-    [orderRef],
+    [orderRef, advance, tr],
+  )
+
+  /** Выбор тарифа на экране сравнения: цена и план фиксируются до оплаты. */
+  const choosePlan = useCallback(
+    async (plan: 'onetime' | 'subscription') => {
+      if (!orderRef) return
+      const branch = paymentChoice?.branch ?? 'ru'
+      setPayVia(plan === 'subscription' ? 'subscription' : 'order')
+      setBusy(true)
+      setError(null)
+      try {
+        const res = await apiPost<PaymentChoice>(`/api/orders/${encodeURIComponent(orderRef)}/payment-branch`, { branch, plan })
+        setPaymentChoice(res)
+        advance(orderRef)
+      } catch {
+        setError(tr('Не получилось сохранить тариф. Попробуйте ещё раз.', "Couldn't save the plan. Please try again."))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [orderRef, paymentChoice?.branch, advance, tr],
   )
 
   /** Платить нечего (dev-режим, уже оплачен, подписка активна) — на страницу заказа. */
@@ -470,11 +563,20 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
           onUnlock={() => advance(orderRef)}
         />
       )}
+      {current === 'paymethod' && (
+        <PaymentMethodStep
+          shell={shell}
+          value={paymentChoice?.branch ?? null}
+          onChoose={(branch) => void chooseBranch(branch)}
+        />
+      )}
       {current === 'speedup' && (
         <SpeedupStep
           shell={shell}
           price={config.speedupPrice}
-          basePrice={config.price}
+          basePrice={paymentChoice?.amount ?? config.price}
+          currency={paymentChoice?.currency ?? currencyForLang(lang)}
+          hidden={paymentChoice?.branch === 'intl'}
           delayHours={config.deliveryDelayHours}
           busy={busy}
           onAccept={buySpeedup}
@@ -484,25 +586,30 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
       {current === 'compare' && (
         <CompareStep
           shell={shell}
-          oneTimePrice={config.price}
-          subscriptionPrice={config.subscriptionPrice}
+          oneTimePrice={paymentChoice?.oneTimeAmount || config.price}
+          subscriptionPrice={paymentChoice?.subscriptionAmount ?? config.subscriptionPrice}
+          currency={paymentChoice?.currency ?? currencyForLang(lang)}
           defaultChoice={config.compareDefault === 'onetime' ? 'onetime' : 'subscription'}
           busy={busy}
-          onSubscribe={() => {
-            setPayVia('subscription')
-            advance(orderRef)
-          }}
-          onOneTime={() => {
-            setPayVia('order')
-            advance(orderRef)
-          }}
+          onSubscribe={() => void choosePlan('subscription')}
+          onOneTime={() => void choosePlan('onetime')}
         />
       )}
       {current === 'payment' && (
         <CheckoutStep
           shell={shell}
-          amount={payVia === 'subscription' ? config.subscriptionPrice : config.price}
-          original={payVia === 'subscription' ? null : config.originalPrice}
+          amount={paymentChoice?.amount ?? config.price}
+          currency={paymentChoice?.currency ?? currencyForLang(lang)}
+          provider={
+            paymentChoice?.provider === 'yookassa' ||
+            paymentChoice?.provider === 'stripe' ||
+            paymentChoice?.provider === 'unitpay'
+              ? paymentChoice.provider
+              : (paymentChoice?.currency ?? currencyForLang(lang)) === 'RUB'
+                ? config.ruProvider
+                : config.intlProvider
+          }
+          original={paymentChoice?.currency === 'USD' ? config.originalPrice : null}
           perMonth={payVia === 'subscription'}
           summary={
             <ul className="space-y-1">
@@ -511,7 +618,7 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
               <li>{tr('Песня придёт на', 'Song will be sent to')} {answers.email.trim()}</li>
             </ul>
           }
-          start={payVia === 'subscription' ? startSubscription : startPayment}
+          start={(mode) => startPayment(mode, payVia === 'subscription' ? 'subscription' : 'onetime')}
           onPaid={goToOrder}
         />
       )}

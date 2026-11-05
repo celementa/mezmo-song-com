@@ -91,12 +91,14 @@ func (s *Server) publicOrderURL(id string) string {
 	return s.siteURL(lang) + "/order/" + publicOrderRef(s.Config.WebhookSecret, id)
 }
 
-// siteURL — корень сайта на языке lang без завершающего слэша: английская
-// версия живёт под /en (frontend/src/lib/lang.ts).
+// siteURL — корень сайта на языке lang без завершающего слэша. Обе версии
+// живут под языковым префиксом: /ru и /en (frontend/src/lib/lang.ts). Корень
+// сайта — только редирект, поэтому ссылки из писем и return_url всегда ведут на
+// конкретный язык заказа.
 func (s *Server) siteURL(lang string) string {
 	base := strings.TrimSuffix(s.Config.PublicAppURL, "/")
 	if lang == store.LangEN {
 		return base + "/en"
 	}
-	return base
+	return base + "/ru"
 }

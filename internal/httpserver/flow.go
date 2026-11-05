@@ -32,6 +32,7 @@ const (
 	StepGenerating   = "generating"   // «пишем вашу песню…»
 	StepPreview      = "preview"      // 15 секунд под замком
 	StepSpeedup      = "speedup"      // апсейл ускорения
+	StepPayMethod    = "paymethod"    // выбор ветки оплаты: RU-карта / международная
 	StepCompare      = "compare"      // v1_price: «разовая vs подписка» до оплаты
 	StepPayment      = "payment"      // оплата — редирект на страницу ЮKassa
 	StepSubscription = "subscription" // апсейл подписки
@@ -43,17 +44,24 @@ const (
 type flowArm struct {
 	ID           string
 	Label        string
-	DefaultPrice int // фолбэк, если цена плеча не задана в настройках; в валюте сайта
-	Steps        []string
+	DefaultPrice int // фолбэк, если цена плеча не задана в настройках; в долларах
+	// RubPrice — фолбэк рублёвой цены разовой покупки. Рублёвая и долларовая
+	// цены независимы: это не пересчёт по курсу, а две цены для двух платёжных
+	// веток.
+	RubPrice int
+	Steps    []string
 	// Route — путь на фронте, где живёт это плечо. Пусто — плечо рендерит
 	// FlowRoute прямо на /config; задано — FlowEntry уводит посетителя туда
 	// (prepay-плечи живут на движке /create, а не в frontend/src/flow).
 	Route string
 	// CompareDefault — что предвыбрано на экране «разовая vs подписка».
 	CompareDefault string
-	// SubscriptionPrice — цена подписки в этом плече за месяц. 0 — общая
-	// (subscriptionPriceRub). Фиксируется у подписки при оформлении.
+	// SubscriptionPrice — цена подписки в этом плече за месяц в долларах. 0 —
+	// общая (subscriptionPriceUSD). Фиксируется у подписки при оформлении.
 	SubscriptionPrice int
+	// RubSubscriptionPrice — цена подписки за месяц в рублях. 0 — общая
+	// (subscriptionPriceRub).
+	RubSubscriptionPrice int
 }
 
 // Предвыбор экрана сравнения ценовых плеч.
@@ -79,7 +87,7 @@ const (
 // это и есть редирект.
 var variant1Steps = []string{
 	StepRecipient, StepOccasion, StepEmail, StepEmotion, StepStory,
-	StepGenerating, StepPreview, StepSpeedup, StepPayment,
+	StepGenerating, StepPreview, StepPayMethod, StepSpeedup, StepPayment,
 	StepSubscription, StepStems, StepDone,
 }
 
@@ -87,7 +95,7 @@ var variant1Steps = []string{
 // подписки после оплаты не повторяется — человек уже ответил на этот вопрос.
 var variant1PriceSteps = []string{
 	StepRecipient, StepOccasion, StepEmail, StepEmotion, StepStory,
-	StepGenerating, StepPreview, StepSpeedup, StepCompare, StepPayment,
+	StepGenerating, StepPreview, StepPayMethod, StepSpeedup, StepCompare, StepPayment,
 	StepStems, StepDone,
 }
 
@@ -95,15 +103,22 @@ var variant1PriceSteps = []string{
 // Источник истины для рендера — фронт; здесь список нужен только чтобы
 // /api/public/flow честно отвечал про состав плеча.
 var variant2PrepaySteps = []string{
-	"email", "payment", "recipient", "occasion", "emotion", "story",
+	"email", "paymethod", "payment", "recipient", "occasion", "emotion", "story",
+	"generating", "listen", "upsellSpeed", "upsellSub", "upsellStems", "done",
+}
+
+// Prepay с выбором тарифа: у 500/750s между способом оплаты и оплатой стоит
+// экран «подписка / разовая», у 990 его нет.
+var variant2PriceSteps = []string{
+	"email", "paymethod", "compare", "payment", "recipient", "occasion", "emotion", "story",
 	"generating", "listen", "upsellSpeed", "upsellSub", "upsellStems", "done",
 }
 
 var flowArms = map[string]flowArm{
-	ArmCom990:           {ID: ArmCom990, Label: "variant3-990 — анкета, потом оплата, $25", DefaultPrice: 25, Steps: variant1Steps},
-	ArmCom500750s:       {ID: ArmCom500750s, Label: "variant3-500-750s — подписка $15 / разовая $19, предвыбрана разовая", DefaultPrice: 19, SubscriptionPrice: 15, Steps: variant1PriceSteps, CompareDefault: CompareOneTime},
-	ArmComPrepay990:     {ID: ArmComPrepay990, Label: "variant4-990 — оплата в начале, $25", DefaultPrice: 25, Steps: variant2PrepaySteps, Route: routeCreatePrepay},
-	ArmComPrepay500750s: {ID: ArmComPrepay500750s, Label: "variant4-500-750s — оплата в начале, разовая $19 / подписка $15", DefaultPrice: 19, SubscriptionPrice: 15, Steps: variant2PrepaySteps, Route: routeCreatePrepay, CompareDefault: CompareOneTime},
+	ArmCom990:           {ID: ArmCom990, Label: "variant3-990 — анкета, потом оплата, $25 / 990 ₽", DefaultPrice: 25, RubPrice: 990, Steps: variant1Steps, SubscriptionPrice: 25, RubSubscriptionPrice: 990},
+	ArmCom500750s:       {ID: ArmCom500750s, Label: "variant3-500-750s — подписка $15 / разовая $19, предвыбрана разовая", DefaultPrice: 19, RubPrice: 750, SubscriptionPrice: 15, RubSubscriptionPrice: 500, Steps: variant1PriceSteps, CompareDefault: CompareOneTime},
+	ArmComPrepay990:     {ID: ArmComPrepay990, Label: "variant4-990 — оплата в начале, $25 / 990 ₽", DefaultPrice: 25, RubPrice: 990, Steps: variant2PrepaySteps, Route: routeCreatePrepay, SubscriptionPrice: 25, RubSubscriptionPrice: 990},
+	ArmComPrepay500750s: {ID: ArmComPrepay500750s, Label: "variant4-500-750s — оплата в начале, разовая $19 / подписка $15", DefaultPrice: 19, RubPrice: 750, SubscriptionPrice: 15, RubSubscriptionPrice: 500, Steps: variant2PriceSteps, Route: routeCreatePrepay, CompareDefault: CompareOneTime},
 }
 
 // KnownFlowArms — id всех реализованных плеч (порядок фиксирован для админки).
@@ -143,6 +158,20 @@ func (s *Server) armForSession(ctx context.Context, sessionID string) (flowArm, 
 
 func (s *Server) armPrice(ctx context.Context, arm flowArm) int {
 	return store.FlowArmPrice(ctx, s.DB, arm.ID, s.armFallbackPrice(arm))
+}
+
+// armPriceRub — цена разовой покупки в рублях. Второй независимый источник
+// цены, а не пересчёт долларовой по курсу.
+func (s *Server) armPriceRub(ctx context.Context, arm flowArm) int {
+	return store.FlowArmPriceRub(ctx, s.DB, arm.ID, arm.RubPrice)
+}
+
+// armPriceIn — цена разовой покупки в валюте платёжной ветки.
+func (s *Server) armPriceIn(ctx context.Context, arm flowArm, currency string) int {
+	if currency == "RUB" {
+		return s.armPriceRub(ctx, arm)
+	}
+	return s.armPrice(ctx, arm)
 }
 
 // armAliases — второе имя плеча для ссылок (вход к тому же плечу). У .com
@@ -287,12 +316,31 @@ func (s *Server) armFallbackPrice(arm flowArm) int {
 	return arm.DefaultPrice
 }
 
-// armSubscriptionPrice — цена подписки плеча, ₽/мес; без своей — общая.
-func armSubscriptionPrice(arm flowArm) int {
+// subscriptionPriceUSD — общий фолбэк цены подписки для .com-плеча без своей
+// цены. 25 — цена плеча variant3-990, единственного с подпиской после оплаты.
+const subscriptionPriceUSD = 25
+
+// armSubscriptionPriceUSD — цена подписки плеча в долларах за месяц; без своей —
+// общая. Раньше функция называлась armSubscriptionPrice и возвращала 990 ₽ при
+// пустом поле, из-за чего в .com-плече без своей цены доллары подменялись рублями.
+func (s *Server) armSubscriptionPriceUSD(ctx context.Context, arm flowArm) int {
 	if arm.SubscriptionPrice > 0 {
-		return arm.SubscriptionPrice
+		return store.FlowArmSubPrice(ctx, s.DB, arm.ID, arm.SubscriptionPrice)
 	}
-	return subscriptionPriceRub
+	return subscriptionPriceUSD
+}
+
+// armSubscriptionPriceRub — цена подписки плеча в рублях за месяц.
+func (s *Server) armSubscriptionPriceRub(ctx context.Context, arm flowArm) int {
+	return store.FlowArmSubPriceRub(ctx, s.DB, arm.ID, arm.RubSubscriptionPrice)
+}
+
+// armSubscriptionPriceIn — цена подписки в валюте платёжной ветки.
+func (s *Server) armSubscriptionPriceIn(ctx context.Context, arm flowArm, currency string) int {
+	if currency == "RUB" {
+		return s.armSubscriptionPriceRub(ctx, arm)
+	}
+	return s.armSubscriptionPriceUSD(ctx, arm)
 }
 
 // pickArm распределяет сессию по плечам с учётом весов. Плечо без веса весит 1.
@@ -500,16 +548,31 @@ func (s *Server) handlePublicFlow(w http.ResponseWriter, r *http.Request) {
 		"label":          arm.Label,
 		"compareDefault": arm.CompareDefault,
 		"steps":          steps,
-		"price":          price,
-		"originalPrice":  originalPriceFromConfig(s.Config),
-		"speedupPrice":   speedup,
-		"stemsPrice":     stems,
+		// price/subscriptionPrice — исторические поля в долларах: их читают
+		// старые экраны. Новые экраны берут валюту ветки из priceUsd/priceRub
+		// и subscriptionPriceUsd/subscriptionPriceRub и не пересчитывают курс.
+		"price":                price,
+		"priceUsd":             price,
+		"priceRub":             s.armPriceRub(ctx, arm),
+		"originalPrice":        originalPriceFromConfig(s.Config),
+		"speedupPrice":         speedup,
+		"stemsPrice":           stems,
+		"subscriptionPrice":    s.armSubscriptionPriceUSD(ctx, arm),
+		"subscriptionPriceUsd": s.armSubscriptionPriceUSD(ctx, arm),
+		"subscriptionPriceRub": s.armSubscriptionPriceRub(ctx, arm),
+		// Провайдер по умолчанию для каждой ветки. Фронт показывает логотипы
+		// и выбирает форму оплаты по этой паре, а не по языку сайта.
+		"ruProvider":   store.PaymentRUProvider(ctx, s.DB),
+		"intlProvider": store.PaymentIntlProvider(ctx, s.DB),
+		// Интерфейс для выбора ветки: до него цены не показываются вовсе.
+		"paymentBranches": []map[string]any{
+			{"id": "ru", "currency": "RUB", "provider": store.PaymentRUProvider(ctx, s.DB)},
+			{"id": "intl", "currency": "USD", "provider": store.PaymentIntlProvider(ctx, s.DB)},
+		},
 		// Срок обычной доставки — тот же источник, что у задержки: экран
 		// ускорения обещает «вместо N часов», и второй раз спрашивать сервер
 		// об этом же значении незачем.
 		"deliveryDelayHours": int(delay.Hours()),
-		// Цена подписки — для экранов сравнения и апсейла; у ценовых плеч своя.
-		"subscriptionPrice": armSubscriptionPrice(arm),
 		// false — подписку не продаём (см. subscriptionsAvailable): движок /create
 		// по нему пропускает апсейл подписки.
 		"subscriptionsEnabled": s.subscriptionsAvailable(),

@@ -68,9 +68,20 @@ type Order struct {
 	// DeliveredAt — когда впервые ушло письмо «Ваша песня готова» (RFC3339).
 	// Не сбрасывается доработкой: по нему письмо на заказ уходит один раз.
 	DeliveredAt sql.NullString
-	// PaymentProvider — через кого выставлен счёт: unitpay | yookassa; пусто —
-	// счёта не было (бесплатный, тестовый, песня по подписке).
+	// PaymentProvider — через кого выставлен счёт: unitpay | yookassa | stripe;
+	// пусто — счёта не было (бесплатный, тестовый, песня по подписке).
 	PaymentProvider sql.NullString
+	// PaymentBranch — ветка оплаты, выбранная покупателем: ru | intl. Пусто у
+	// заказов, созданных до выбора ветки. Валюта и провайдер выводятся из неё,
+	// но Currency хранится отдельно: админка и Grafana не должны складывать
+	// рубли с долларами, даже если ветку потом переименуют.
+	PaymentBranch sql.NullString
+	// Currency — валюта сумм заказа: RUB | USD. Пусто у старых заказов — для
+	// них действует валюта сайта (siteCurrency).
+	Currency sql.NullString
+	// PaymentPlan — что оплачивается: onetime (песня) | subscription (первый
+	// месяц подписки вместо разовой). Пусто — разовая покупка.
+	PaymentPlan sql.NullString
 	// Language — язык сайта, на котором создан заказ: ru | en (пусто — ru, все
 	// заказы до английской версии). От него зависят промпты песни, письма и
 	// ссылки на сайт в них. Читать через Lang().
@@ -79,6 +90,11 @@ type Order struct {
 	// (save_payment_method). По нему апсейл «безлимит за 0 ₽ сегодня»
 	// активирует подписку без второго ввода карты.
 	YooMethodID sql.NullString
+	// StripeCustomerID / StripePaymentMethodID — сохранённые Stripe Customer и
+	// карта с разовой оплаты. По ним апсейл подписки создаётся без повторной
+	// формы Stripe Checkout.
+	StripeCustomerID      sql.NullString
+	StripePaymentMethodID sql.NullString
 }
 
 // Значения orders.payment_status, которые ставит вебхук ЮKassa. Схема их не
@@ -285,6 +301,15 @@ CREATE TABLE IF NOT EXISTS orders (
 	// дашборду: оплаты .com (UnitPay) отделяются от ЮKassa.
 	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN payment_provider TEXT`)
 	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN language TEXT`)
+	// payment_branch / currency — ветка оплаты (ru|intl) и валюта сумм заказа.
+	// Бэкфилл не нужен: пусто = заказ создан до выбора ветки, для него действует
+	// валюта сайта. Смешивать ₽ и $ в отчётах нельзя, поэтому валюта хранится
+	// рядом с суммой, а не выводится из текущих настроек задним числом.
+	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN payment_branch TEXT`)
+	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN currency TEXT`)
+	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN payment_plan TEXT`)
+	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN stripe_customer_id TEXT`)
+	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN stripe_payment_method_id TEXT`)
 
 	// kie_task_id / kie_audio_ids — идентификаторы последнего прогона генерации у
 	// Kie.ai. Нужны для точечной правки отрезка аудио (replace-section) и Persona:
@@ -433,7 +458,7 @@ FROM orders WHERE id = ?`, id,
 	).Scan(&o.ID, &o.Status, &o.DeliveryStatus, &o.PaymentStatus, &o.InputPayloadJSON, &o.CustomerJSON,
 		&o.ThemeSlug, &o.XenditInvoiceURL, &o.YooPaymentID, &o.BasePrice, &o.DiscountCode, &o.DiscountAmount,
 		&o.PurchaseTrackedAt, &o.ServerTrackedAt, &o.GAClientID, &o.YMClientID, &o.AttributionJSON, &o.AudioURLsJSON, &o.LyricsText, &demoFlag, &o.RegenerationCount, &o.KieTaskID, &o.KieAudioIDs, &o.YooPaymentIDs, &o.YooConfirmation, &o.RefundedKopecks, &o.SubscriptionID, &o.Flow, &o.FunnelStage, &consentFlag, &o.ExtrasSelectedJSON, &o.ExtrasPaidJSON, &o.ExtrasPendingJSON, &o.FollowupSentAt, &created,
-		&o.FlowVariant, &o.PreviewStartedAt, &o.PreviewAudioURL, &o.DeliverAfter, &speedupFlag, &o.ParentOrderID, &o.UpsellKind, &o.ProcessingStartedAt, &o.YooMethodID, &o.DeliveredAt, &o.PaymentProvider, &o.Language)
+		&o.FlowVariant, &o.PreviewStartedAt, &o.PreviewAudioURL, &o.DeliverAfter, &speedupFlag, &o.ParentOrderID, &o.UpsellKind, &o.ProcessingStartedAt, &o.YooMethodID, &o.DeliveredAt, &o.PaymentProvider, &o.Language, &o.PaymentBranch, &o.Currency, &o.PaymentPlan, &o.StripeCustomerID, &o.StripePaymentMethodID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return o, ErrNotFound
 	}
@@ -449,7 +474,7 @@ FROM orders WHERE id = ?`, id,
 
 const orderColumns = `id, status, delivery_status, payment_status, input_payload, customer, theme_slug, xendit_invoice_url, yoo_payment_id,
        base_price, discount_code, discount_amount, purchase_tracked_at, server_tracked_at, ga_client_id, ym_client_id, attribution, audio_urls, lyrics_text, demo_completed, regeneration_count, kie_task_id, kie_audio_ids, yoo_payment_ids, yoo_confirmation, refunded_kopecks, subscription_id, flow, funnel_stage, email_consent, extras_selected, extras_paid, extras_pending, followup_sent_at, created_at,
-       flow_variant, preview_started_at, preview_audio_url, deliver_after, speedup_purchased, parent_order_id, upsell_kind, processing_started_at, yoo_payment_method_id, delivered_at, payment_provider, language`
+       flow_variant, preview_started_at, preview_audio_url, deliver_after, speedup_purchased, parent_order_id, upsell_kind, processing_started_at, yoo_payment_method_id, delivered_at, payment_provider, language, payment_branch, currency, payment_plan, stripe_customer_id, stripe_payment_method_id`
 
 func scanOrders(rows *sql.Rows) ([]Order, error) {
 	defer rows.Close()
@@ -462,7 +487,7 @@ func scanOrders(rows *sql.Rows) ([]Order, error) {
 		if err := rows.Scan(&o.ID, &o.Status, &o.DeliveryStatus, &o.PaymentStatus, &o.InputPayloadJSON, &o.CustomerJSON,
 			&o.ThemeSlug, &o.XenditInvoiceURL, &o.YooPaymentID, &o.BasePrice, &o.DiscountCode, &o.DiscountAmount,
 			&o.PurchaseTrackedAt, &o.ServerTrackedAt, &o.GAClientID, &o.YMClientID, &o.AttributionJSON, &o.AudioURLsJSON, &o.LyricsText, &demoFlag, &o.RegenerationCount, &o.KieTaskID, &o.KieAudioIDs, &o.YooPaymentIDs, &o.YooConfirmation, &o.RefundedKopecks, &o.SubscriptionID, &o.Flow, &o.FunnelStage, &consentFlag, &o.ExtrasSelectedJSON, &o.ExtrasPaidJSON, &o.ExtrasPendingJSON, &o.FollowupSentAt, &created,
-			&o.FlowVariant, &o.PreviewStartedAt, &o.PreviewAudioURL, &o.DeliverAfter, &speedupFlag, &o.ParentOrderID, &o.UpsellKind, &o.ProcessingStartedAt, &o.YooMethodID, &o.DeliveredAt, &o.PaymentProvider, &o.Language); err != nil {
+			&o.FlowVariant, &o.PreviewStartedAt, &o.PreviewAudioURL, &o.DeliverAfter, &speedupFlag, &o.ParentOrderID, &o.UpsellKind, &o.ProcessingStartedAt, &o.YooMethodID, &o.DeliveredAt, &o.PaymentProvider, &o.Language, &o.PaymentBranch, &o.Currency, &o.PaymentPlan, &o.StripeCustomerID, &o.StripePaymentMethodID); err != nil {
 			return nil, err
 		}
 		o.DemoCompleted = demoFlag != 0

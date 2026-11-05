@@ -26,10 +26,26 @@ const (
 	// веса получает 1. Формат с явными id, а не позиционный CSV: список
 	// включённых плеч правится отдельным полем, и позиции разъехались бы.
 	SettingFlowArmWeights = "flow.arm_weights"
-	// SettingFlowPricePrefix + id плеча — цена разовой покупки этого плеча.
-	// Значение перекрывает PAYMENT_AMOUNT_RUBLES; env остаётся фолбэком, чтобы
-	// цена не имела двух источников истины.
+	// SettingFlowPricePrefix + id плеча — цена разовой покупки этого плеча
+	// в долларах (международная ветка). Значение перекрывает
+	// PAYMENT_AMOUNT_RUBLES; env остаётся фолбэком, чтобы цена не имела двух
+	// источников истины.
 	SettingFlowPricePrefix = "flow.price."
+	// SettingFlowPriceRubPrefix + id плеча — цена разовой покупки в рублях
+	// (российская ветка). Рублёвая и долларовая цены независимы: курс не
+	// применяется, иначе $19 и 750 ₽ разъехались бы при первом же движении ЦБ.
+	SettingFlowPriceRubPrefix = "flow.price_rub."
+	// SettingFlowSubPricePrefix + id плеча — цена подписки в долларах за месяц.
+	SettingFlowSubPricePrefix = "flow.sub_price."
+	// SettingFlowSubPriceRubPrefix + id плеча — цена подписки в рублях за месяц.
+	SettingFlowSubPriceRubPrefix = "flow.sub_price_rub."
+
+	// SettingPaymentIntlProvider — провайдер международной ветки: stripe|unitpay.
+	// Переключается в /admin/settings без деплоя: UnitPay ещё на проверке, и если
+	// он её пройдёт, обратно на Stripe возвращаться не придётся.
+	SettingPaymentIntlProvider = "payments.intl_provider"
+	// SettingPaymentRUProvider — провайдер российской ветки: yookassa|unitpay.
+	SettingPaymentRUProvider = "payments.ru_provider"
 
 	// SettingSaveCardInFunnel — просить ли ЮKassa сохранить карту при оплате
 	// песни в воронках. «1» — просим: апсейл «безлимит за 0 ₽ сегодня»
@@ -136,6 +152,69 @@ func FlowArmPrice(ctx context.Context, db *sql.DB, armID string, fallback int) i
 
 // SettingFlowArmPriceKey — ключ настройки цены плеча.
 func SettingFlowArmPriceKey(armID string) string { return SettingFlowPricePrefix + armID }
+
+// SettingFlowArmPriceRubKey — ключ настройки рублёвой цены плеча.
+func SettingFlowArmPriceRubKey(armID string) string { return SettingFlowPriceRubPrefix + armID }
+
+// SettingFlowArmSubPriceKey — ключ настройки долларовой цены подписки плеча.
+func SettingFlowArmSubPriceKey(armID string) string { return SettingFlowSubPricePrefix + armID }
+
+// SettingFlowArmSubPriceRubKey — ключ настройки рублёвой цены подписки плеча.
+func SettingFlowArmSubPriceRubKey(armID string) string { return SettingFlowSubPriceRubPrefix + armID }
+
+// FlowArmPriceRub — рублёвая цена разовой покупки плеча. Отдельная от
+// долларовой: это две независимые цены для двух платёжных веток, а не курс.
+func FlowArmPriceRub(ctx context.Context, db *sql.DB, armID string, fallback int) int {
+	price := settingInt(ctx, db, SettingFlowArmPriceRubKey(armID), fallback)
+	if price <= 0 {
+		return fallback
+	}
+	return price
+}
+
+// FlowArmSubPrice — долларовая цена подписки плеча за месяц.
+func FlowArmSubPrice(ctx context.Context, db *sql.DB, armID string, fallback int) int {
+	price := settingInt(ctx, db, SettingFlowArmSubPriceKey(armID), fallback)
+	if price <= 0 {
+		return fallback
+	}
+	return price
+}
+
+// FlowArmSubPriceRub — рублёвая цена подписки плеча за месяц.
+func FlowArmSubPriceRub(ctx context.Context, db *sql.DB, armID string, fallback int) int {
+	price := settingInt(ctx, db, SettingFlowArmSubPriceRubKey(armID), fallback)
+	if price <= 0 {
+		return fallback
+	}
+	return price
+}
+
+// PaymentIntlProvider — провайдер международной ветки. Неизвестное значение
+// трактуется как stripe: это безопасный дефолт, при котором деньги идут в
+// настроенный аккаунт Stripe, а не в чужой UnitPay.
+func PaymentIntlProvider(ctx context.Context, db *sql.DB) string {
+	return settingProvider(ctx, db, SettingPaymentIntlProvider, "stripe", "stripe", "unitpay")
+}
+
+// PaymentRUProvider — провайдер российской ветки. Неизвестное значение
+// трактуется как yookassa.
+func PaymentRUProvider(ctx context.Context, db *sql.DB) string {
+	return settingProvider(ctx, db, SettingPaymentRUProvider, "yookassa", "yookassa", "unitpay")
+}
+
+func settingProvider(ctx context.Context, db *sql.DB, key, fallback string, allowed ...string) string {
+	value := strings.ToLower(strings.TrimSpace(GetSetting(ctx, db, key, "")))
+	if value == "" {
+		return fallback
+	}
+	for _, a := range allowed {
+		if value == a {
+			return value
+		}
+	}
+	return fallback
+}
 
 // PreviewEnabled — включена ли генерация до оплаты. Значение «0» выключает её
 // для всех воронок сразу.
@@ -270,6 +349,23 @@ func RecordArmLinkMiss(ctx context.Context, db *sql.DB, name, reason string, now
 func SetOrderFlow(ctx context.Context, db *sql.DB, id, arm string, basePrice int) error {
 	_, err := db.ExecContext(ctx, `UPDATE orders SET flow_variant = ?, base_price = ? WHERE id = ?`, arm, basePrice, id)
 	return err
+}
+
+// SetOrderPaymentChoice фиксирует выбор способа оплаты: ветку, валюту, план и
+// цену в этой валюте. Провайдер здесь не пишется: payment_provider означает
+// «кто выставил счёт», и до создания платежа это ещё неизвестно.
+//
+// UPDATE не трогает оплаченный заказ: после денег менять валюту, план и цену
+// нельзя.
+func SetOrderPaymentChoice(ctx context.Context, db *sql.DB, id, branch, currency, plan string, basePrice int) (bool, error) {
+	res, err := db.ExecContext(ctx, `
+		UPDATE orders SET payment_branch = ?, currency = ?, payment_plan = ?, base_price = ?
+		WHERE id = ? AND payment_status = ?`, branch, currency, plan, basePrice, id, PaymentPending)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 // --- Генерация до оплаты ---
@@ -472,4 +568,19 @@ func AttachOrderToSubscription(ctx context.Context, db *sql.DB, id, subID string
 func LinkOrderSubscription(ctx context.Context, db *sql.DB, id, subID string) error {
 	_, err := db.ExecContext(ctx, `UPDATE orders SET subscription_id = ? WHERE id = ?`, subID, id)
 	return err
+}
+
+// SetOrderStripePayment запоминает Customer и сохранённую карту Stripe после
+// разовой оплаты — чтобы подписку после неё включить без новой формы.
+func SetOrderStripePayment(ctx context.Context, db *sql.DB, id, customerID, paymentMethodID string) error {
+	_, err := db.ExecContext(ctx, `UPDATE orders SET stripe_customer_id = ?, stripe_payment_method_id = ? WHERE id = ?`,
+		nullIfEmpty(customerID), nullIfEmpty(paymentMethodID), id)
+	return err
+}
+
+func nullIfEmpty(v string) any {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	return v
 }

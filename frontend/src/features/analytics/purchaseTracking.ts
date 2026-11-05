@@ -12,6 +12,7 @@ export type PurchaseTrackingOrderStatus = {
   purchaseTrackedAt?: string | null
   isTest?: boolean
   paymentAmount?: number | null
+  currency?: 'RUB' | 'USD'
   pixelConfirmScript?: string | null
   tiktokPixelConfirmScript?: string | null
 }
@@ -88,6 +89,9 @@ export async function fireOrderPurchaseTracking(
   // Ecommerce для Метрики строит тег контейнера «cHTML - YM ecom - purchase» из items —
   // свой ecommerce-пуш здесь НЕ нужен, иначе Метрика посчитает покупку дважды.
   const price = orderStatus.paymentAmount ?? 0
+  // Валюта заказа, а не сайта: $19 из Stripe нельзя записать как 19 ₽, и
+  // наоборот. Сервер уже отдаёт сумму в этой же валюте.
+  const currency = orderStatus.currency === 'RUB' ? 'RUB' : 'USD'
   const productId = 'song_standard'
   const productName = 'Персональная песня — Стандарт'
   let customerType: 'new' | 'returning' = 'new'
@@ -100,8 +104,13 @@ export async function fireOrderPurchaseTracking(
   dataLayer.push({
     event: 'purchase',
     transaction_id: trackingId,
+    // Тот же ключ, что event_id у серверного Meta CAPI (sendMetaConversion):
+    // с ним GTM-тег «Meta - purchase» и CAPI схлопываются в одну покупку.
+    // Без него при включённых META_PIXEL_ID/META_ACCESS_TOKEN Purchase
+    // посчитался бы дважды — браузером и сервером.
+    event_id: trackingId,
     value: price,
-    currency: 'USD',
+    currency,
     customer_type: customerType,
     language: getLang(),
     items: [{ item_id: productId, item_name: productName, price, quantity: 1, item_category: 'Song' }],
@@ -114,8 +123,10 @@ export async function fireOrderPurchaseTracking(
 
   // Fire admin-configured custom pixel script with dynamic order value
   // Admin scripts can use: orderValue, currency, eventID variables
-  const eventId = `order_confirmed:${trackingId}`
-  const pixelVars = { eventID: eventId, orderValue: price, currency: 'USD' }
+  // Тот же сырой id заказа, что у серверных конверсий и GA4: по нему браузерное
+  // и серверное события схлопываются в одну покупку.
+  const eventId = trackingId
+  const pixelVars = { eventID: eventId, orderValue: price, currency }
   if (orderStatus.pixelConfirmScript) {
     executePixelScript(orderStatus.pixelConfirmScript, pixelVars)
   }

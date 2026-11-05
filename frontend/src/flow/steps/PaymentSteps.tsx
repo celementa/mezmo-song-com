@@ -8,8 +8,7 @@ import { useState, type ReactNode } from 'react'
 import { Check, Lightbulb } from 'lucide-react'
 
 import { StepShell } from '@/routes/create/StepShell'
-import { fmtCurrency } from '@/routes/config/utils'
-import { useCurrency } from '@/lib/currency'
+import { formatMoney, type OrderCurrency } from '@/lib/currency'
 import { UnitPayCheckout, type PaymentMode, type PaymentStart } from '@/features/payment/UnitPayCheckout'
 import { useTr } from '@/lib/lang'
 import type { ShellPassthrough } from './BriefSteps'
@@ -18,6 +17,7 @@ export function CompareStep({
   shell,
   oneTimePrice,
   subscriptionPrice,
+  currency,
   defaultChoice,
   busy,
   onSubscribe,
@@ -26,6 +26,7 @@ export function CompareStep({
   shell: ShellPassthrough
   oneTimePrice: number
   subscriptionPrice: number
+  currency: OrderCurrency
   /** Что предвыбрано — задаёт плечо (v20: тест предвыбора по умолчанию). */
   defaultChoice: 'subscription' | 'onetime'
   busy: boolean
@@ -33,14 +34,12 @@ export function CompareStep({
   onOneTime: () => void
 }) {
   const [choice, setChoice] = useState<'subscription' | 'onetime'>(defaultChoice)
-  const currency = useCurrency()
   const tr = useTr()
-  const fmt = (n: number) => fmtCurrency(n, currency)
+  const fmt = (n: number) => formatMoney(n, currency)
 
   return (
     <StepShell
       {...shell}
-      canGoBack={false}
       busy={busy}
       eyebrow={tr('Перед оплатой', 'Before you pay')}
       headline={tr(
@@ -128,6 +127,8 @@ function CompareCard({
 export function CheckoutStep({
   shell,
   amount,
+  currency,
+  provider,
   original,
   perMonth = false,
   summary,
@@ -136,6 +137,8 @@ export function CheckoutStep({
 }: {
   shell: ShellPassthrough
   amount: number
+  currency: OrderCurrency
+  provider?: 'yookassa' | 'stripe' | 'unitpay'
   original?: number | null
   /** Первый платёж подписки: сумма подписана «в месяц». */
   perMonth?: boolean
@@ -147,6 +150,8 @@ export function CheckoutStep({
     <UnitPayCheckout
       shell={{ ...shell, canGoBack: true }}
       amount={amount}
+      currency={currency}
+      provider={provider}
       original={original}
       perMonth={perMonth}
       summary={summary}

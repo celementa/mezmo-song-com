@@ -18,7 +18,9 @@ export type StepId =
   | 'listen'      // прослушивание + шаринг отрывка
   | 'email'       // email-capture (v1)
   | 'upsellSpeed' // ускорение +290 ₽
-  | 'payment'     // редирект на страницу ЮKassa (своего экрана нет — v9/v11)
+  | 'paymethod'   // выбор ветки оплаты: российская карта / международная
+  | 'compare'     // подписка vs разовая покупка (ценовые плечи)
+  | 'payment'     // оплата: ЮKassa/Stripe (своего экрана тарифа нет)
   | 'upsellSub'   // апсейл подписки «Безлимит»
   | 'upsellStems' // инструментал и вокал отдельно +190 ₽
   | 'done'        // готово, скачать MP3
@@ -34,6 +36,7 @@ const V1_STEPS: StepId[] = [
   'generating',
   'listen',
   'email',
+  'paymethod',
   'upsellSpeed',
   'payment',
   'upsellSub',
@@ -43,6 +46,8 @@ const V1_STEPS: StepId[] = [
 
 const V2_STEPS: StepId[] = [
   'email',
+  'paymethod',
+  'compare',
   'payment',
   'recipient',
   'occasion',

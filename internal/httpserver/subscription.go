@@ -57,7 +57,7 @@ func (s *Server) registerSubscription(mux *http.ServeMux) {
 // реализованы только через ЮKassa; у UnitPay подписки включает их служба
 // безопасности, и интеграции под них пока нет.
 func (s *Server) subscriptionsAvailable() bool {
-	return s.yooConfigured()
+	return s.yooConfigured() || s.stripeConfigured()
 }
 
 // requireSubscriptions закрывает ручки оформления подписки, пока продавать её
@@ -70,6 +70,26 @@ func (s *Server) requireSubscriptions(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		h(w, r)
+	}
+}
+
+// branchSellsSubscriptions — можно ли оформить подписку в ветке с этим
+// провайдером. subscriptionsAvailable() отвечает глобально («есть ли чем
+// продавать вообще»), а здесь — про конкретную ветку: UnitPay рекуррентку не
+// включил, и выбор подписки в его ветке падал 503 уже на шаге оплаты, то есть
+// после того, как человек выбрал план. Без ключей (стенд, mock) ветка не мешает:
+// подписка там активируется без оплаты.
+func (s *Server) branchSellsSubscriptions(provider string) bool {
+	if !s.subscriptionsAvailable() {
+		return true
+	}
+	switch provider {
+	case ProviderYooKassa:
+		return s.yooConfigured()
+	case ProviderStripe:
+		return s.stripeConfigured()
+	default:
+		return false
 	}
 }
 
@@ -714,6 +734,8 @@ func (s *Server) sendSubscriptionConversions(sub store.Subscription, paymentID, 
 		Label:       "subscription " + sub.ID + " payment " + paymentID,
 		TxID:        paymentID,
 		Value:       value,
+		Currency:    CurrencyRUB, // подписки ЮKassa всегда в рублях
+		Email:       sub.Email,
 		ItemID:      "subscription",
 		ItemName:    "Подписка на песни",
 		GAClientID:  sub.GAClientID.String,

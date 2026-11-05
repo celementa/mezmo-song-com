@@ -27,12 +27,23 @@ export type FlowConfig = {
   // Предвыбор на экране «разовая vs подписка» ценовых плеч.
   compareDefault?: 'subscription' | 'onetime' | ''
   steps: string[]
+  /** Разовая цена в долларах — историческое поле. */
   price: number
+  /** Разовая цена в валюте ветки: рубли. До выбора ветки не показывается. */
+  priceRub: number
+  priceUsd: number
   originalPrice: number
   speedupPrice: number
   stemsPrice: number
   deliveryDelayHours: number
+  /** Подписка в долларах — историческое поле. */
   subscriptionPrice: number
+  subscriptionPriceRub: number
+  subscriptionPriceUsd: number
+  /** Провайдер по умолчанию для каждой ветки: yookassa|unitpay / stripe|unitpay. */
+  ruProvider: 'yookassa' | 'unitpay'
+  intlProvider: 'stripe' | 'unitpay'
+  paymentBranches: { id: 'ru' | 'intl'; currency: 'RUB' | 'USD'; provider: string }[]
   previewReady: boolean
   previewReason: string
 }

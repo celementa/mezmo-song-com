@@ -7,7 +7,8 @@ import { intlLocale, localePath, useTr } from '@/lib/lang'
 import { CREAM, GOLD } from '@/routes/create/StepShell'
 import { useFlowConfig } from './useFlowConfig'
 import { markUpsellSeen } from './upsellSeen'
-import { fmtCurrency } from '@/routes/config/utils'
+import { formatMoney, type OrderCurrency } from '@/lib/currency'
+import { StripeEmbeddedCheckout } from '@/features/payment/UnitPayCheckout'
 
 /**
  * Шаги 11–12 варианта 1: апсейл подписки и апсейл стемов сразу после оплаты.
@@ -41,10 +42,17 @@ function UpsellCard({ children }: { children: React.ReactNode }) {
 export function PostPaymentUpsell({
   orderRef,
   paidAmount,
+  currency,
+  subscriptionAmount,
+  canSubscribe = true,
   onDone,
 }: {
   orderRef: string
   paidAmount: number
+  currency: OrderCurrency
+  subscriptionAmount?: number | null
+  /** Провайдер заказа умеет рекуррентку. false — экран подписки не показываем. */
+  canSubscribe?: boolean
   onDone: () => void
 }) {
   const navigate = useNavigate()
@@ -53,6 +61,7 @@ export function PostPaymentUpsell({
   const [screen, setScreen] = useState<'subscription' | 'stems'>('subscription')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [stripe, setStripe] = useState<{ clientSecret: string; publishableKey: string } | null>(null)
 
   const finish = () => {
     markUpsellSeen(orderRef)
@@ -73,12 +82,15 @@ export function PostPaymentUpsell({
     return null
   }
 
-  const subscriptionPrice = flow.config.subscriptionPrice
-  const stemsPrice = flow.config.stemsPrice
+  const money = (value: number) => formatMoney(value, currency)
+  const subscriptionPrice = subscriptionAmount ?? flow.config.subscriptionPrice
+  // Стемы в международной ветке не продаём: в макете их нет.
+  const stemsPrice = currency === 'RUB' ? flow.config.stemsPrice : 0
   // Ценовое плечо: выбор «разовая vs подписка» уже был ДО оплаты (compare), и
   // повторять его после — значит переспрашивать. Плечо без шага подписки
   // сразу идёт к стемам или к песне.
-  const offerSubscription = flow.config.steps.includes('subscription') && screen === 'subscription'
+  const offerSubscription =
+    canSubscribe && flow.config.steps.includes('subscription') && screen === 'subscription'
 
   /**
    * «Безлимит за 0 ₽ сегодня»: подписка включается по карте, сохранённой
@@ -89,7 +101,17 @@ export function PostPaymentUpsell({
     setBusy(true)
     setError(null)
     try {
-      await apiPost(`/api/orders/${encodeURIComponent(orderRef)}/subscribe`, {})
+      const res = await apiPost<{ clientSecret?: string; publishableKey?: string }>(
+        `/api/orders/${encodeURIComponent(orderRef)}/subscribe`,
+        {},
+      )
+      // Международная ветка: Stripe Billing с trial 30 дней. Форму монтируем
+      // здесь же, карта привязывается сейчас, списание — через месяц.
+      if (res.clientSecret) {
+        if (!res.publishableKey) throw new Error('stripe_not_configured')
+        setStripe({ clientSecret: res.clientSecret, publishableKey: res.publishableKey })
+        return
+      }
       // Отдельного экрана «Подписка оформлена» нет: о подписке расскажет письмо,
       // а человека сразу ведём дальше — к песне.
       goToStemsOrFinish()
@@ -163,7 +185,7 @@ export function PostPaymentUpsell({
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-[#EFE4D2] bg-[#FDFBF7] p-4">
             <p className={eyebrowClass}>{tr('То, что вы купили', 'What you bought')}</p>
-            <p className="mt-1 text-lg font-bold text-[#151210]">{fmtCurrency(paidAmount)}</p>
+            <p className="mt-1 text-lg font-bold text-[#151210]">{money(paidAmount)}</p>
             <p className="text-[11px] text-[#9c9186]">{tr('разово, 1 песня', 'one-time, 1 song')}</p>
             <ul className="mt-3 space-y-1 text-[11px] text-[#6b6259]">
               <li className="flex gap-1.5"><Check className="h-3 w-3 shrink-0 text-[#b4a893]" /> {tr('1 готовая песня', '1 finished song')}</li>
@@ -189,11 +211,23 @@ export function PostPaymentUpsell({
         )}
 
         <p className="mt-5 text-center text-xs text-[#9c9186]">
-          {tr('Далее', 'Then')} — {fmtCurrency(subscriptionPrice)}{tr('/мес, спишем через месяц. Отмена в любой момент.', '/mo, billed in a month. Cancel anytime.')}
+          {tr('Далее', 'Then')} — {money(subscriptionPrice)}{tr('/мес, спишем через месяц. Отмена в любой момент.', '/mo, billed in a month. Cancel anytime.')}
         </p>
-        <button type="button" className={`${primaryButtonClass} mt-3`} style={primaryButtonStyle} disabled={busy} onClick={subscribeFromOrder}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tr('Перейти на безлимит за $0', 'Go unlimited for $0')}
-        </button>
+        {stripe ? (
+          <div className="mt-4 rounded-2xl border border-[#EFE4D2] bg-white p-2">
+            <StripeEmbeddedCheckout
+              clientSecret={stripe.clientSecret}
+              publishableKey={stripe.publishableKey}
+              onError={() =>
+                setError(tr('Не получилось открыть форму Stripe. Попробуйте ещё раз.', "Couldn't open the Stripe form. Please try again."))
+              }
+            />
+          </div>
+        ) : (
+          <button type="button" className={`${primaryButtonClass} mt-3`} style={primaryButtonStyle} disabled={busy} onClick={subscribeFromOrder}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tr('Перейти на безлимит за $0', 'Go unlimited for $0')}
+          </button>
+        )}
         {/* Вторичная кнопка с рамкой, а не ссылка: на телефоне «Не сейчас»
             без рамки терялось под основной и не читалось как кликабельное. */}
         <button
@@ -227,7 +261,7 @@ export function PostPaymentUpsell({
             <Sparkles className="h-5 w-5 text-[#151210]" />
           </span>
           <div>
-            <div className="text-sm font-bold text-[#151210]">+{fmtCurrency(stemsPrice)}</div>
+            <div className="text-sm font-bold text-[#151210]">+{money(stemsPrice)}</div>
             <div className="text-xs text-[#6b6259]">{tr('отдельный платёж', 'separate payment')}</div>
           </div>
         </div>

@@ -70,6 +70,12 @@ func (s *Server) handleOrderSubscribe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 409, map[string]string{"error": "no_email"})
 		return
 	}
+	// Международная ветка: «0 сегодня» через Stripe Billing (trial 30 дней).
+	// Локальной привязки карты у Stripe нет, поэтому ветка ЮKassa ниже не подходит.
+	if s.orderCurrency(o) == CurrencyUSD || s.orderProvider(ctx, o) == ProviderStripe {
+		s.initiateStripeUpsell(w, r, o)
+		return
+	}
 	methodID := o.YooMethodID.String
 	if methodID == "" {
 		if s.yooConfigured() {
@@ -175,11 +181,17 @@ func (s *Server) handleOrderSubscribeInstead(w http.ResponseWriter, r *http.Requ
 	// Цена подписки — из плеча заказа: ценовые плечи v20 продают подписку
 	// дешевле общей, и продления обязаны идти по той же цене.
 	if o.FlowVariant.Valid {
-		if arm, ok := flowArms[o.FlowVariant.String]; ok && arm.SubscriptionPrice > 0 {
-			if err := store.SetSubscriptionPrice(ctx, s.DB, sub.ID, arm.SubscriptionPrice); err != nil {
-				log.Printf("[sub] instead order=%s sub=%s: set price err=%v", id, sub.ID, err)
-			} else {
-				sub.PriceRub = arm.SubscriptionPrice
+		if arm, ok := flowArms[o.FlowVariant.String]; ok {
+			price := arm.SubscriptionPrice
+			if s.orderCurrency(o) == CurrencyRUB {
+				price = arm.RubSubscriptionPrice
+			}
+			if price > 0 {
+				if err := store.SetSubscriptionPrice(ctx, s.DB, sub.ID, price); err != nil {
+					log.Printf("[sub] instead order=%s sub=%s: set price err=%v", id, sub.ID, err)
+				} else {
+					sub.PriceRub = price
+				}
 			}
 		}
 	}

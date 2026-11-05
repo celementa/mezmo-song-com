@@ -1,0 +1,112 @@
+{
+  "uid": "mezmo-com",
+  "title": "Mezmo .com — заказы и валюты",
+  "tags": [
+    "mezmo",
+    "com",
+    "payments"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Оплаченные заказы: валюта, провайдер, ветка",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "mezmo-com"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryText": "SELECT currency AS \"Валюта\", COALESCE(NULLIF(payment_provider,''),'—') AS \"Провайдер\", COALESCE(NULLIF(payment_branch,''),'—') AS \"Ветка\", COUNT(*) AS \"Заказов\", SUM(base_price - COALESCE(discount_amount,0)) AS \"Сумма\", ROUND(AVG(base_price - COALESCE(discount_amount,0)),0) AS \"Средний чек\" FROM orders WHERE payment_status='paid' GROUP BY currency, payment_provider, payment_branch ORDER BY currency, payment_provider",
+          "rawQueryText": "SELECT currency AS \"Валюта\", COALESCE(NULLIF(payment_provider,''),'—') AS \"Провайдер\", COALESCE(NULLIF(payment_branch,''),'—') AS \"Ветка\", COUNT(*) AS \"Заказов\", SUM(base_price - COALESCE(discount_amount,0)) AS \"Сумма\", ROUND(AVG(base_price - COALESCE(discount_amount,0)),0) AS \"Средний чек\" FROM orders WHERE payment_status='paid' GROUP BY currency, payment_provider, payment_branch ORDER BY currency, payment_provider",
+          "queryType": "table",
+          "timeColumns": []
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "По дням: заказы, оплаты и выручка в валюте заказа",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "mezmo-com"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryText": "SELECT substr(created_at,1,10) AS \"День\", currency AS \"Валюта\", COALESCE(NULLIF(payment_provider,''),'—') AS \"Провайдер\", COUNT(*) AS \"Заказов\", SUM(CASE WHEN payment_status='paid' THEN 1 ELSE 0 END) AS \"Оплачено\", SUM(CASE WHEN payment_status='paid' THEN base_price - COALESCE(discount_amount,0) ELSE 0 END) AS \"Выручка\" FROM orders GROUP BY 1,2,3 ORDER BY 1 DESC, 2, 3",
+          "rawQueryText": "SELECT substr(created_at,1,10) AS \"День\", currency AS \"Валюта\", COALESCE(NULLIF(payment_provider,''),'—') AS \"Провайдер\", COUNT(*) AS \"Заказов\", SUM(CASE WHEN payment_status='paid' THEN 1 ELSE 0 END) AS \"Оплачено\", SUM(CASE WHEN payment_status='paid' THEN base_price - COALESCE(discount_amount,0) ELSE 0 END) AS \"Выручка\" FROM orders GROUP BY 1,2,3 ORDER BY 1 DESC, 2, 3",
+          "queryType": "table",
+          "timeColumns": []
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Последние заказы",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "datasource": {
+        "type": "frser-sqlite-datasource",
+        "uid": "mezmo-com"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryText": "SELECT substr(created_at,1,19) AS \"Когда\", substr(id,1,18) AS \"Заказ\", currency AS \"Валюта\", COALESCE(NULLIF(payment_provider,''),'—') AS \"Провайдер\", COALESCE(NULLIF(payment_branch,''),'—') AS \"Ветка\", payment_status AS \"Оплата\", base_price AS \"Сумма\", COALESCE(NULLIF(payment_plan,''),'onetime') AS \"План\", COALESCE(NULLIF(flow_variant,''),'—') AS \"Плечо\" FROM orders ORDER BY created_at DESC LIMIT 100",
+          "rawQueryText": "SELECT substr(created_at,1,19) AS \"Когда\", substr(id,1,18) AS \"Заказ\", currency AS \"Валюта\", COALESCE(NULLIF(payment_provider,''),'—') AS \"Провайдер\", COALESCE(NULLIF(payment_branch,''),'—') AS \"Ветка\", payment_status AS \"Оплата\", base_price AS \"Сумма\", COALESCE(NULLIF(payment_plan,''),'onetime') AS \"План\", COALESCE(NULLIF(flow_variant,''),'—') AS \"Плечо\" FROM orders ORDER BY created_at DESC LIMIT 100",
+          "queryType": "table",
+          "timeColumns": []
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ]
+}

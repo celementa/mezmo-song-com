@@ -185,3 +185,49 @@ func TestReconcileSettlesSubscriptionPayment(t *testing.T) {
 		t.Fatalf("second run settled = %d, want 0", n)
 	}
 }
+
+// Оба провайдера настроены одновременно: тестовый UnitPay и ЮKassa. Сверка
+// обязана проверять каждый, а не только UnitPay — иначе оплаченный заказ
+// российской ветки висит pending, пока его не зачтут руками.
+func TestReconcileRunsYooKassaWhenUnitPayConfigured(t *testing.T) {
+	s, _ := yooPaymentsByID(t, map[string]map[string]any{
+		"pay_lost": succeededPayment("pay_lost", "ord_both", "990.00"),
+	})
+	s.Config.UnitPayProjectID = "445942"
+	s.Config.UnitPaySecretKey = "secret"
+	ctx := context.Background()
+	seedOrderAt(t, s.DB, "ord_both", "pending", time.Now().Add(-30*time.Minute))
+	if err := store.AddPaymentID(ctx, s.DB, "ord_both", "pay_lost", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	if n := s.reconcilePayments(ctx, time.Now()); n != 1 {
+		t.Fatalf("settled = %d, want 1", n)
+	}
+	o, err := store.GetOrder(ctx, s.DB, "ord_both")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.PaymentStatus != store.PaymentPaid {
+		t.Fatalf("payment_status = %q, want paid", o.PaymentStatus)
+	}
+}
+
+// Платежи разных провайдеров различаются по форме id: numeric — UnitPay,
+// cs_/pi_ — Stripe, остальное (UUID) — ЮKassa. Чужие id нельзя отправлять в
+// API провайдера: в ответ приходит ошибка формата.
+func TestPaymentIDBelongsToProvider(t *testing.T) {
+	if !idLooksUnitPay("44594244033") {
+		t.Fatal("числовой id должен распознаваться как UnitPay")
+	}
+	if idLooksUnitPay("327b42c9-000f-5000-b000-1ca21fca1a51") {
+		t.Fatal("UUID ЮKassa не должен считаться id UnitPay")
+	}
+	if !idLooksStripe("cs_test_a1PHE1uyCf") || !idLooksStripe("pi_3Qx") {
+		t.Fatal("cs_/pi_ должны распознаваться как Stripe")
+	}
+	got := yooKassaPaymentIDs([]string{"44594244033", "cs_test_a1", "327b42c9-000f-5000-b000-1ca21fca1a51"})
+	if len(got) != 1 || got[0] != "327b42c9-000f-5000-b000-1ca21fca1a51" {
+		t.Fatalf("yooKassaPaymentIDs = %v, ждали только UUID ЮKassa", got)
+	}
+}

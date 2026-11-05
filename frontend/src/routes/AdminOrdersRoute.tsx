@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
 import { AdminNav } from '@/components/admin/AdminNav'
 
-/** Суммы .com — в долларах. */
-const usd = (n: number) => `$${n.toLocaleString('en-US')}`
+/** Сумма в валюте заказа: рубли и доллары не складываются и не пересчитываются. */
+const money = (n: number, currency?: string | null) =>
+  currency === 'RUB' ? `${n.toLocaleString('ru-RU')} ₽` : `$${n.toLocaleString('en-US')}`
+/** Платежи подписок ЮKassa всегда в рублях. */
+const rub = (n: number) => money(n, 'RUB')
 
 /** Платёж подписки: у провайдера это обычный платёж, а в списке заказов его нет —
  * песни подписчиков идут заказами на 0. Без этого блока сверка «сколько денег
@@ -64,7 +67,7 @@ function SubscriptionPayments() {
       >
         <span className="text-gray-800">
           <span className="font-medium">Платежи подписок за {data?.days ?? 30} дн.:</span>{' '}
-          {data ? `${payments.length} на ${usd(data.total)}` : '…'}
+          {data ? `${payments.length} на ${rub(data.total)}` : '…'}
           <span className="ml-2 text-xs text-gray-500">— в списке заказов их нет, песни подписчиков идут по $0</span>
         </span>
         <span className="text-xs text-gray-500">{open ? 'свернуть' : 'показать'}</span>
@@ -87,7 +90,7 @@ function SubscriptionPayments() {
                 <tr key={p.paymentId}>
                   <td className="whitespace-nowrap px-3 py-2 text-gray-600">{fmtDate(p.createdAt)}</td>
                   <td className="px-3 py-2 text-gray-800">{p.email}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-gray-800">{usd(p.amount)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-gray-800">{rub(p.amount)}</td>
                   <td className="px-3 py-2 text-gray-600">{SUB_FLOW[p.flow] ?? p.flow}</td>
                   <td className="px-3 py-2 text-gray-600">{SUB_STATUS[p.subStatus] ?? p.subStatus}</td>
                   <td className="px-3 py-2"><YooPaymentId id={p.paymentId} /></td>
@@ -125,6 +128,8 @@ type AdminOrder = {
   subscriptionPayments: { count: number; firstAt: string | null; lastFlow: string | null }
   paymentKind: 'one_time' | 'subscription_song' | 'internal' | 'free'
   paymentProvider: string | null
+  paymentBranch: string | null
+  currency: 'RUB' | 'USD'
   language: 'ru' | 'en'
   landingUrl: string | null
   demoCompleted: boolean
@@ -230,7 +235,7 @@ const FLOW_LABEL: Record<string, StatusMeta> = {
  * важно, что выбрал человек, а не что было предвыбрано (суффикс `s` в имени). */
 const PRICE_ARMS = new Set(['variant3-500-750s', 'variant4-500-750s'])
 
-const PROVIDER_LABEL: Record<string, string> = { unitpay: 'UnitPay', yookassa: 'ЮKassa' }
+const PROVIDER_LABEL: Record<string, string> = { unitpay: 'UnitPay', yookassa: 'ЮKassa', stripe: 'Stripe' }
 
 const SUB_PAYMENT_FLOW: Record<string, string> = {
   subscription_first: 'первый платёж',
@@ -250,7 +255,7 @@ function MoneyCell({ o }: { o: AdminOrder }) {
         <div className="font-medium text-violet-700">по подписке, $0 по заказу</div>
         <div className="text-gray-500">
           подписка {SUB_STATUS[o.subscriptionStatus ?? ''] ?? o.subscriptionStatus ?? '—'}
-          {o.subscriptionPrice > 0 ? `, ${usd(o.subscriptionPrice)}/мес` : ''}
+          {o.subscriptionPrice > 0 ? `, ${money(o.subscriptionPrice, o.currency)}/мес` : ''}
         </div>
         <div className="text-gray-400">
           {sp.count > 0
@@ -308,14 +313,14 @@ function PriceCell({ o }: { o: AdminOrder }) {
     return (
       <div>
         <div className="font-medium text-violet-700">по подписке</div>
-        {o.subscriptionPrice > 0 && <div className="text-xs text-gray-400">{usd(o.subscriptionPrice)}/мес</div>}
+        {o.subscriptionPrice > 0 && <div className="text-xs text-gray-400">{money(o.subscriptionPrice, o.currency)}/мес</div>}
       </div>
     )
   }
   if (o.discountCode === 'INTERNAL') {
     return (
       <div>
-        <div>{usd(o.basePrice)}</div>
+        <div>{money(o.basePrice, o.currency)}</div>
         <div className="text-xs text-gray-400">тестовый</div>
       </div>
     )
@@ -323,7 +328,7 @@ function PriceCell({ o }: { o: AdminOrder }) {
   const chosenOneTime = o.paymentStatus === 'paid' && o.flowVariant && PRICE_ARMS.has(o.flowVariant)
   return (
     <div>
-      <div>{usd(o.basePrice)}</div>
+      <div>{money(o.basePrice, o.currency)}</div>
       {chosenOneTime && <div className="text-xs text-gray-400">выбрал разовую</div>}
     </div>
   )

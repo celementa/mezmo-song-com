@@ -8,6 +8,7 @@ import {
 import type { Loose } from '@/lib/loose'
 import { runOrderPurchaseTracking } from '@/features/analytics/purchaseTracking'
 import { DeliveryHeldScreen, PostPaymentUpsell } from '@/flow/PostPaymentUpsell'
+import { canSellSubscription } from '@/features/payment/capabilities'
 import { upsellAlreadySeen } from '@/flow/upsellSeen'
 import { fmtCurrency } from '@/routes/config/utils'
 import { intlLocale, useTr } from '@/lib/lang'
@@ -94,6 +95,8 @@ type OrderStatus = {
   purchaseTrackedAt?: string | null
   isTest?: boolean
   paymentAmount?: number
+  currency?: 'RUB' | 'USD'
+  subscriptionAmount?: number | null
   pixelConfirmScript?: string | null
   tiktokPixelConfirmScript?: string | null
   hasEmail?: boolean
@@ -108,6 +111,8 @@ type OrderStatus = {
   resumeUrl?: string | null
   upsellKind?: string | null
   subscribed?: boolean
+  /** Провайдер, которым оплачен заказ: от него зависит, можно ли оформить подписку. */
+  provider?: string | null
   speedupPurchased?: boolean
 }
 
@@ -878,11 +883,15 @@ export function OrderDeliveryRoute() {
     void runOrderPurchaseTracking(orderStatus)
   }, [orderStatus])
 
-  // Poll for status updates while order is processing or failed (admin may retry), or revision is pending
+  // Poll for status updates while order is processing or failed (admin may retry),
+  // revision is pending, or the payment is still pending. Пока оплата «ждёт»,
+  // зачёт приходит вебхуком уже после возврата с платёжной страницы: без опроса
+  // человек видел «Ожидается оплата» до перезагрузки, даже когда деньги прошли.
   useEffect(() => {
     if (!orderId || !orderStatus) return
     const isProcessing = orderStatus.status === 'processing' || orderStatus.status === 'created' || orderStatus.status === 'failed'
-    if (!isProcessing && !isRevisionPending) return
+    const isPendingPayment = orderStatus.paymentStatus === 'pending'
+    if (!isProcessing && !isRevisionPending && !isPendingPayment) return
 
     const poll = async () => {
       try {
@@ -905,9 +914,11 @@ export function OrderDeliveryRoute() {
       }
     }
 
-    const id = setInterval(poll, 10000)
+    // Пока оплата не подтверждена — опрос чаще: зачёт приходит в первые секунды
+    // после возврата с платёжной страницы.
+    const id = setInterval(poll, isPendingPayment ? 5000 : 10000)
     return () => clearInterval(id)
-  }, [orderId, orderStatus?.status, isRevisionPending])
+  }, [orderId, orderStatus?.status, orderStatus?.paymentStatus, isRevisionPending])
 
   const cfg = orderStatus?.config ?? {}
   const accent = cfg.accentColor || '#E11D48'
@@ -996,6 +1007,12 @@ export function OrderDeliveryRoute() {
               'This order is not paid yet. Complete the payment so we can start creating your song.',
             )}
           </p>
+          <p className="mt-2 text-xs text-gray-400">
+            {tr(
+              'Если вы уже оплатили, страница обновится сама в течение минуты.',
+              'If you have already paid, this page will update by itself within a minute.',
+            )}
+          </p>
           {orderStatus.xenditInvoiceUrl && (
             <a
               href={orderStatus.xenditInvoiceUrl}
@@ -1035,6 +1052,9 @@ export function OrderDeliveryRoute() {
       <PostPaymentUpsell
         orderRef={orderId}
         paidAmount={orderStatus?.paymentAmount ?? 0}
+        currency={orderStatus?.currency === 'USD' ? 'USD' : 'RUB'}
+        subscriptionAmount={orderStatus?.subscriptionAmount}
+        canSubscribe={canSellSubscription(orderStatus?.provider)}
         onDone={() => setUpsellDone(true)}
       />
     )

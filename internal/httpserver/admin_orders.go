@@ -40,14 +40,24 @@ type adminOrderRow struct {
 	subPayments       store.SubscriptionPaymentSummary
 	landingURL        string
 	currency          string
+	paymentProvider   string
+	paymentBranch     string
 }
 
 func (s *Server) adminOrderRow(ctx context.Context, o store.Order) adminOrderRow {
+	provider := o.PaymentProvider.String
+	if provider == "" && o.PaymentBranch.Valid {
+		// Заказ ещё не оплачен, но ветка выбрана: показываем провайдера, которому
+		// он будет платить, а не пустую ячейку.
+		provider = s.orderProvider(ctx, o)
+	}
 	row := adminOrderRow{
-		o:         o,
-		publicRef: publicOrderRef(s.Config.WebhookSecret, o.ID),
-		parentRef: refOrEmpty(s.Config.WebhookSecret, o.ParentOrderID),
-		currency:  s.siteCurrency(),
+		o:               o,
+		publicRef:       publicOrderRef(s.Config.WebhookSecret, o.ID),
+		parentRef:       refOrEmpty(s.Config.WebhookSecret, o.ParentOrderID),
+		currency:        s.orderCurrency(o),
+		paymentProvider: provider,
+		paymentBranch:   o.PaymentBranch.String,
 	}
 	var cust map[string]any
 	_ = json.Unmarshal([]byte(o.CustomerJSON), &cust)
@@ -104,7 +114,8 @@ func (r adminOrderRow) json() map[string]any {
 			"lastFlow": nullStr(r.subPayments.LastFlow),
 		},
 		"paymentKind":       r.paymentKind,
-		"paymentProvider":   nullStr(o.PaymentProvider.String),
+		"paymentProvider":   nullStr(r.paymentProvider),
+		"paymentBranch":     nullStr(r.paymentBranch),
 		"language":          o.Lang(),
 		"currency":          r.currency,
 		"landingUrl":        nullStr(r.landingURL),
@@ -137,7 +148,7 @@ func (r adminOrderRow) json() map[string]any {
 // csvColumns — шапка выгрузки. Порядок фиксирован: по нему же собирается строка.
 var csvColumns = []string{
 	"created_at", "order_id", "order_url", "language", "email", "phone", "recipient",
-	"arm", "flow", "price", "currency", "payment_status", "payment_kind", "payment_provider", "provider_payment_id",
+	"arm", "flow", "price", "currency", "payment_status", "payment_kind", "payment_provider", "payment_branch", "provider_payment_id",
 	"subscription_status", "subscription_price", "subscription_payments", "subscription_last_payment",
 	"song_status", "delivery_status",
 	"landing_url", "referrer", "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "ref",
@@ -153,7 +164,7 @@ func (r adminOrderRow) csv(orderURL string) []string {
 	}
 	return []string{
 		o.CreatedAt.UTC().Format(time.RFC3339), o.ID, orderURL, o.Lang(), r.email, r.whatsapp, jsonRecipient(o.InputPayloadJSON),
-		o.FlowVariant.String, o.Flow.String, strconv.Itoa(orderFinalPrice(o)), r.currency, o.PaymentStatus, r.paymentKind, o.PaymentProvider.String, o.YooPaymentID.String,
+		o.FlowVariant.String, o.Flow.String, strconv.Itoa(orderFinalPrice(o)), r.currency, o.PaymentStatus, r.paymentKind, r.paymentProvider, r.paymentBranch, o.YooPaymentID.String,
 		r.subStatus, subPrice, strconv.Itoa(r.subPayments.Count), r.subPayments.LastFlow,
 		o.Status, o.DeliveryStatus,
 		r.landingURL, attr("referrer"), attr("utm_source"), attr("utm_medium"), attr("utm_campaign"), attr("utm_content"), attr("utm_term"), attr("ref"),

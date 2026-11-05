@@ -8,7 +8,7 @@ import { Loader2, Lock, Pause, Play, Zap } from 'lucide-react'
 
 import { GOLD, StepShell } from '@/routes/create/StepShell'
 import type { ShellPassthrough } from './BriefSteps'
-import { fmtCurrency } from '@/routes/config/utils'
+import { formatMoney, type OrderCurrency } from '@/lib/currency'
 import { useLang, useTr } from '@/lib/lang'
 import { answerText } from '../types'
 
@@ -154,6 +154,8 @@ export function SpeedupStep({
   shell,
   price,
   basePrice,
+  currency,
+  hidden = false,
   delayHours,
   busy,
   onAccept,
@@ -162,12 +164,21 @@ export function SpeedupStep({
   shell: ShellPassthrough
   price: number
   basePrice: number
+  currency: OrderCurrency
+  /** В международной ветке допники скрыты: в макете их нет. */
+  hidden?: boolean
   delayHours: number
   busy: boolean
   onAccept: () => void
   onSkip: () => void
 }) {
   const tr = useTr()
+  useEffect(() => {
+    if (hidden) onSkip()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hidden])
+  if (hidden) return null
+  const money = (value: number) => formatMoney(value, currency)
   const hoursEn = delayHours === 1 ? '1 hour' : `${delayHours} hours`
   return (
     <StepShell
@@ -191,9 +202,9 @@ export function SpeedupStep({
             <Zap className="h-5 w-5 text-[#151210]" />
           </span>
           <div>
-            <div className="text-sm font-bold text-[#151210]">+{fmtCurrency(price)}</div>
+            <div className="text-sm font-bold text-[#151210]">+{money(price)}</div>
             <div className="text-xs text-[#6b6259]">
-              {tr('итого', 'total')} {fmtCurrency(basePrice + price)}
+              {tr('итого', 'total')} {money(basePrice + price)}
             </div>
           </div>
         </div>

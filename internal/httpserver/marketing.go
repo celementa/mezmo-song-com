@@ -100,7 +100,7 @@ func (s *Server) marketingEvent(orderID, eventType string) {
 		"occurred_at":    time.Now().UTC().Format(time.RFC3339),
 		"payment_status": o.PaymentStatus,
 		"order_status":   o.Status,
-		"order_url":      base + "/order/" + ref,
+		"order_url":      s.publicOrderURL(o.ID),
 		"status_url":     base + "/api/public/order/" + ref + "/status",
 		"checkout_url":   nil,
 		"recipient_name": jsonRecipient(o.InputPayloadJSON),

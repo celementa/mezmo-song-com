@@ -483,7 +483,7 @@ func TestOrderResumeReturnsAnswersUntilPaidOrGenerating(t *testing.T) {
 	}
 
 	o, _ := store.GetOrder(ctx, s.DB, "ord_resume")
-	if got := s.resumeURL(o); got != "/config?arm=variant3-500-750s&order="+url.QueryEscape(publicOrderRef(s.Config.WebhookSecret, "ord_resume")) {
+	if got := s.resumeURL(o); got != "/ru/config?arm=variant3-500-750s&order="+url.QueryEscape(publicOrderRef(s.Config.WebhookSecret, "ord_resume")) {
 		t.Fatalf("resumeURL = %q", got)
 	}
 
@@ -580,7 +580,7 @@ func TestFlowDefaultStepsHideDisabledUpsells(t *testing.T) {
 	want := []string{
 		StepRecipient, StepOccasion, StepEmail, StepEmotion, StepStory,
 		// Подписки без ЮKassa нет — апсейла после оплаты тоже.
-		StepGenerating, StepPreview, StepPayment, StepDone,
+		StepGenerating, StepPreview, StepPayMethod, StepPayment, StepDone,
 	}
 	if strings.Join(flow.Steps, ",") != strings.Join(want, ",") {
 		t.Fatalf("шаги = %v, ожидалось %v", flow.Steps, want)
@@ -825,9 +825,9 @@ func TestArmLinkNamesMatchPrices(t *testing.T) {
 		compareDefault string
 		route          string
 	}{
-		{ArmCom990, 25, subscriptionPriceRub, "", ""},
+		{ArmCom990, 25, 25, "", ""},
 		{ArmCom500750s, 19, 15, CompareOneTime, ""},
-		{ArmComPrepay990, 25, subscriptionPriceRub, "", routeCreatePrepay},
+		{ArmComPrepay990, 25, 25, "", routeCreatePrepay},
 		{ArmComPrepay500750s, 19, 15, CompareOneTime, routeCreatePrepay},
 	}
 	for _, c := range cases {
@@ -835,9 +835,9 @@ func TestArmLinkNamesMatchPrices(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s: плечо не найдено", c.arm)
 		}
-		if arm.DefaultPrice != c.oneTime || armSubscriptionPrice(arm) != c.sub || arm.CompareDefault != c.compareDefault || arm.Route != c.route {
+		if arm.DefaultPrice != c.oneTime || arm.SubscriptionPrice != c.sub || arm.CompareDefault != c.compareDefault || arm.Route != c.route {
 			t.Errorf("%s: разовая=%d подписка=%d предвыбор=%q route=%q, ждали %d/%d/%q/%q",
-				c.arm, arm.DefaultPrice, armSubscriptionPrice(arm), arm.CompareDefault, arm.Route, c.oneTime, c.sub, c.compareDefault, c.route)
+				c.arm, arm.DefaultPrice, arm.SubscriptionPrice, arm.CompareDefault, arm.Route, c.oneTime, c.sub, c.compareDefault, c.route)
 		}
 	}
 }
@@ -872,5 +872,46 @@ func TestFlowHidesSubscriptionStepsWithoutProvider(t *testing.T) {
 	s.requireSubscriptions(s.handleSubscriptionStart)(rec, req)
 	if rec.Code != 503 {
 		t.Fatalf("оформление подписки без провайдера: код %d, ожидался 503", rec.Code)
+	}
+}
+
+// /api/public/flow отдаёт обе цены и обе цены подписки. Экран выбора способа
+// оплаты не показывает цену до выбора ветки, а после выбора берёт готовое
+// значение в валюте ветки — пересчёта по курсу на фронте быть не должно.
+func TestPublicFlowExposesBothCurrencies(t *testing.T) {
+	s := orderRefTestServer(t)
+	ctx := context.Background()
+	if err := store.SetSetting(ctx, s.DB, store.SettingFlowArmsEnabled, ArmCom500750s); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetSetting(ctx, s.DB, store.SettingFlowArmPriceRubKey(ArmCom500750s), "800"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetSetting(ctx, s.DB, store.SettingFlowArmSubPriceRubKey(ArmCom500750s), "520"); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	s.handlePublicFlow(rec, httptest.NewRequest("GET", "/api/public/flow?sid=cur-1&arm="+ArmCom500750s, nil))
+	var flow struct {
+		Price                int    `json:"price"`
+		PriceRub             int    `json:"priceRub"`
+		PriceUsd             int    `json:"priceUsd"`
+		SubscriptionPrice    int    `json:"subscriptionPrice"`
+		SubscriptionPriceRub int    `json:"subscriptionPriceRub"`
+		RUProvider           string `json:"ruProvider"`
+		IntlProvider         string `json:"intlProvider"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &flow); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if flow.PriceRub != 800 || flow.PriceUsd != 19 || flow.Price != 19 {
+		t.Fatalf("разовая: usd=%d rub=%d legacy=%d, ждали 19/800/19", flow.PriceUsd, flow.PriceRub, flow.Price)
+	}
+	if flow.SubscriptionPriceRub != 520 || flow.SubscriptionPrice != 15 || flow.SubscriptionPrice != flow.PriceUsd && flow.SubscriptionPrice == 0 {
+		t.Fatalf("подписка: usd=%d rub=%d, ждали 15/520", flow.SubscriptionPrice, flow.SubscriptionPriceRub)
+	}
+	if flow.RUProvider != "yookassa" || flow.IntlProvider != "stripe" {
+		t.Fatalf("провайдеры: ru=%q intl=%q, ждали yookassa/stripe", flow.RUProvider, flow.IntlProvider)
 	}
 }
