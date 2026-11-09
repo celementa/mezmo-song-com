@@ -107,7 +107,11 @@ export function UnitPayCheckout({
   const tr = useTr()
   const entity = legalEntity ?? legalEntityForProvider(provider)
   const money = (value: number) => formatMoney(value, currency) + (perMonth ? tr('/мес', '/mo') : '')
-  const [agreed, setAgreed] = useState(false)
+  // Две отдельные галочки: банк требует явное подтверждение оферты, а обработка
+  // ПДн — отдельное согласие. Обе обязательны, но человек видит, что именно
+  // принимает, и отказ можно объяснить точнее.
+  const [offerAgreed, setOfferAgreed] = useState(false)
+  const [dataAgreed, setDataAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [widget, setWidget] = useState<{ url: string; returnUrl: string } | null>(null)
@@ -116,11 +120,20 @@ export function UnitPayCheckout({
   const [yoo, setYoo] = useState<{ token: string; returnUrl: string } | null>(null)
 
   const pay = async () => {
-    if (!agreed) {
+    if (!offerAgreed) {
       setError(
         tr(
           'Чтобы перейти к оплате, примите условия Пользовательского соглашения.',
-          'To continue to payment, please accept the Terms of Use.',
+          'To continue to payment, please accept the Terms of Service.',
+        ),
+      )
+      return
+    }
+    if (!dataAgreed) {
+      setError(
+        tr(
+          'Чтобы перейти к оплате, дайте согласие на обработку персональных данных.',
+          'To continue to payment, please consent to the processing of personal data.',
         ),
       )
       return
@@ -191,7 +204,7 @@ export function UnitPayCheckout({
             : tr(`Оплатить ${money(amount)}`, `Pay ${money(amount)}`)
       }
       onPrimary={() => void pay()}
-      primaryDisabled={!agreed || busy || Boolean(yoo)}
+      primaryDisabled={!offerAgreed || !dataAgreed || busy || Boolean(yoo)}
     >
       <div className="rounded-2xl border border-[#EFE4D2] bg-white p-4">
         <div className="flex items-baseline justify-between gap-3">
@@ -223,9 +236,9 @@ export function UnitPayCheckout({
       <label className="mt-4 flex cursor-pointer items-start gap-3 text-xs leading-relaxed text-[#3b352f]">
         <input
           type="checkbox"
-          checked={agreed}
+          checked={offerAgreed}
           onChange={(e) => {
-            setAgreed(e.target.checked)
+            setOfferAgreed(e.target.checked)
             setError(null)
           }}
           className="mt-0.5 h-4 w-4 shrink-0 accent-[#B9852E]"
@@ -233,13 +246,29 @@ export function UnitPayCheckout({
         <span>
           {tr('Я принимаю', 'I accept the')}{' '}
           <Link to={legalDocPath('terms', entity)} target="_blank" className={linkClass}>
-            {tr('Пользовательское соглашение', 'Terms of Use')}
+            {tr('Пользовательское соглашение', 'Terms of Service')}
           </Link>{' '}
-          ({tr('включая', 'including the')}{' '}
+          {tr('(публичную оферту)', '(public offer)')}
+          {tr(', включая', ', including the')}{' '}
           <Link to={legalDocPath('security', entity)} target="_blank" className={linkClass}>
             {tr('Политику информационной безопасности', 'Information Security Policy')}
           </Link>
-          ) {tr('и даю', 'and give')}{' '}
+          .
+        </span>
+      </label>
+
+      <label className="mt-3 flex cursor-pointer items-start gap-3 text-xs leading-relaxed text-[#3b352f]">
+        <input
+          type="checkbox"
+          checked={dataAgreed}
+          onChange={(e) => {
+            setDataAgreed(e.target.checked)
+            setError(null)
+          }}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-[#B9852E]"
+        />
+        <span>
+          {tr('Я даю', 'I give my')}{' '}
           <Link to={legalDocPath('consent', entity)} target="_blank" className={linkClass}>
             {tr('согласие на обработку персональных данных', 'consent to the processing of personal data')}
           </Link>{' '}

@@ -5,7 +5,7 @@ These Terms of Service (the "Terms") are a public offer made by Celementa FZCO, 
 
 ## Acceptance of these Terms
 
-By placing an order and ticking the box confirming your agreement with these Terms before payment, you accept these Terms in full, together with the Privacy Policy, the Consent to the Processing of Personal Data and the Information Security Policy (Appendix 1), which form an integral part of these Terms.
+By placing an order and ticking the separate boxes confirming your agreement with these Terms and your consent to the processing of personal data before payment, you accept these Terms in full, together with the Privacy Policy, the Consent to the Processing of Personal Data and the Information Security Policy (Appendix 1), which form an integral part of these Terms.
 If you do not agree with these Terms, please do not use the Service.
 You confirm that you are at least 18 years old, or that you are using the Service with the consent of your parent or legal guardian, and that you have the legal capacity to enter into this agreement.
 
