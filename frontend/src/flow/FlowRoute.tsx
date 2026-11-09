@@ -18,6 +18,7 @@ import { CheckoutStep, CompareStep } from './steps/PaymentSteps'
 import { PaymentMethodStep, type PaymentBranch } from '@/features/payment/PaymentMethodStep'
 import { canSellSubscription } from '@/features/payment/capabilities'
 import { currencyForLang } from '@/lib/currency'
+import { legalEntityForBranch } from '@/lib/site'
 import type { PaymentMode, PaymentStart } from '@/features/payment/UnitPayCheckout'
 
 /**
@@ -609,6 +610,7 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
                 ? config.ruProvider
                 : config.intlProvider
           }
+          legalEntity={paymentChoice?.branch ? legalEntityForBranch(paymentChoice.branch) : undefined}
           original={paymentChoice?.currency === 'USD' ? config.originalPrice : null}
           perMonth={payVia === 'subscription'}
           summary={

@@ -1,10 +1,13 @@
 // Реквизиты юрлиц mezmo-song.com — единственное место, откуда их берут футер,
 // контакты и юридические страницы.
 //
-// Юрлицо зависит от языка страницы, потому что от него зависит платёжная ветка:
-// рублёвые платежи идут на российское ООО «МБК» (ЮKassa), международные — на
-// Celementa FZCO (Stripe). Русские юрдоки (src/legal/*.md) описывают МБК,
-// английские (src/legal/en/*.md) — FZCO.
+// Юрлицо зависит от платёжной ветки, а не от языка страницы: рублёвые платежи
+// идут на российское ООО «МБК» (ЮKassa), международные — на Celementa FZCO
+// (Stripe или UnitPay). Русские юрдоки (src/legal/*.md) описывают МБК,
+// английские (src/legal/en/*.md) — FZCO. Без выбранной ветки (лендинг) пара
+// «язык страницы → документы» остаётся прежней.
+import { localePath } from './lang'
+
 export type Company = {
   name: string
   /** Регистрационный номер иностранного юрлица (FZCO). */
@@ -32,7 +35,7 @@ export const COMPANY: Company = {
 export const RU_COMPANY: Company = {
   name: 'ООО «МБК»',
   inn: '7708364569',
-  ogrn: '1097746427536',
+  ogrn: '1197746677402',
   kpp: '770801001',
   address: '107140, г. Москва, вн.тер.г. Муниципальный Округ Красносельский, пер. 1-й Красносельский, д. 3, подв. 1, пом/ком/оф. I/17/B-03',
   email: 'support@mezmo-song.com',
@@ -72,3 +75,30 @@ export const LEGAL_LINKS: { doc: LegalDoc; label: { ru: string; en: string } }[]
   { doc: 'security', label: { ru: 'Политика информационной безопасности', en: 'Information Security Policy' } },
   { doc: 'consent', label: { ru: 'Согласие на обработку персональных данных', en: 'Consent to the Processing of Personal Data' } },
 ]
+
+/**
+ * Юрлицо документов: 'ru' — ООО «МБК», 'en' — Celementa FZCO.
+ *
+ * Ветка важнее языка страницы: на /en можно выбрать российскую карту, и тогда
+ * человеку показываются документы МБК, а на /ru с международной картой —
+ * документы FZCO. На лендинге ветки ещё нет, и юрлицо берётся по языку.
+ */
+export type LegalEntity = 'ru' | 'en'
+
+export function legalEntityForBranch(branch?: 'ru' | 'intl' | null): LegalEntity {
+  return branch === 'ru' ? 'ru' : 'en'
+}
+
+/** Запасной вариант, когда ветка неизвестна: ЮKassa — рубли, остальные — FZCO. */
+export function legalEntityForProvider(provider?: string | null): LegalEntity {
+  return provider === 'yookassa' ? 'ru' : 'en'
+}
+
+/**
+ * Ссылка на документ выбранного юрлица. Язык страницы остаётся текущим
+ * (localePath), а `?entity=` говорит LegalPage, какие тексты и реквизиты
+ * показывать: язык интерфейса и юрлицо — разные вещи.
+ */
+export function legalDocPath(doc: LegalDoc, entity: LegalEntity, lang?: 'ru' | 'en'): string {
+  return `${localePath(`/${doc}`, lang)}?entity=${entity}`
+}

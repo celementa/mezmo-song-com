@@ -197,10 +197,12 @@ func PaymentIntlProvider(ctx context.Context, db *sql.DB) string {
 	return settingProvider(ctx, db, SettingPaymentIntlProvider, "stripe", "stripe", "unitpay")
 }
 
-// PaymentRUProvider — провайдер российской ветки. Неизвестное значение
+// PaymentRUProvider — провайдер российской ветки. Рубли принимает только
+// ЮKassa: к ней привязаны юрдокументы ООО «МБК» (оферта, политики, согласие).
+// UnitPay в этой ветке не используется, поэтому сохранённое старое значение
 // трактуется как yookassa.
 func PaymentRUProvider(ctx context.Context, db *sql.DB) string {
-	return settingProvider(ctx, db, SettingPaymentRUProvider, "yookassa", "yookassa", "unitpay")
+	return settingProvider(ctx, db, SettingPaymentRUProvider, "yookassa", "yookassa")
 }
 
 func settingProvider(ctx context.Context, db *sql.DB, key, fallback string, allowed ...string) string {

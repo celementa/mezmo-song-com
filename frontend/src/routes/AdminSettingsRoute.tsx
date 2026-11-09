@@ -37,7 +37,8 @@ type Settings = {
   deliveryDelayMinutes: number
   speedupPrice: number
   stemsPrice: number
-  ruProvider: 'yookassa' | 'unitpay'
+  /** Рублёвая ветка — всегда ЮKassa (документы ООО «МБК»). */
+  ruProvider: 'yookassa'
   intlProvider: 'stripe' | 'unitpay'
 }
 
@@ -252,21 +253,13 @@ export function AdminSettingsRoute() {
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
               <SettingRow
                 title="Российская ветка"
-                hint="Чем принимать рубли. По умолчанию ЮKassa; UnitPay остаётся запасным вариантом. Переключение действует без деплоя."
+                hint="Рубли принимает только ЮKassa — с ней связаны оферта, политики и согласие ООО «МБК». Провайдер не переключается."
               >
-                <select
-                  value={settings.ruProvider}
-                  disabled={busy}
-                  onChange={(e) => save({ ruProvider: e.target.value as 'yookassa' | 'unitpay' })}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="yookassa">ЮKassa</option>
-                  <option value="unitpay">UnitPay</option>
-                </select>
+                <span className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">ЮKassa</span>
               </SettingRow>
               <SettingRow
                 title="Международная ветка"
-                hint="Чем принимать доллары. По умолчанию Stripe; UnitPay — на случай, если он пройдёт проверку. Переключение действует без деплоя."
+                hint="Доллары принимает Stripe или UnitPay. Юрлицо и документы ветки не зависят от выбора: это всегда Celementa FZCO. Переключение действует без деплоя."
               >
                 <select
                   value={settings.intlProvider}

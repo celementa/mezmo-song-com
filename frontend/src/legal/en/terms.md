@@ -1,7 +1,7 @@
 # Terms of Service (Public Offer)
 
-Last updated: October 23, 2026
-These Terms of Service (the "Terms") are a public offer made by Celementa FZCO, a company registered in the Dubai Silicon Oasis free zone, United Arab Emirates, registration number 16116518, address: Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE ("Mezmo", "we", "us" or "our"), to any person ("you" or the "Customer") to order personalized songs through the website mezmo-song.com (the "Site"). The Site, the song creation service and all related features are together called the "Service".
+Last updated: November 9, 2026
+These Terms of Service (the "Terms") are a public offer made by Celementa FZCO, a company registered in the Dubai Silicon Oasis free zone with the Dubai Silicon Oasis Authority (DSOA), United Arab Emirates, registration number 16116518, address: Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE ("Mezmo", "we", "us" or "our"), to any person ("you" or the "Customer") to order personalized songs through the website mezmo-song.com (the "Site"). The Site, the song creation service and all related features are together called the "Service".
 
 ## Acceptance of these Terms
 
@@ -18,7 +18,7 @@ The description of the Service and its current price are shown on the Site befor
 ## Prices and payment
 
 Prices are shown on the Site before payment in US dollars (USD) or in another currency displayed on the Site for your region. The amount shown at the moment of payment is final for your order and includes any taxes we are required to charge, unless stated otherwise.
-Payments are processed by our payment service provider UnitPay (Unitpay.ru LLC), which is certified to PCI DSS Level 1. You can pay with a bank card (Visa, Mastercard) or with any other payment method available on the payment page.
+Payments are processed by our payment service providers Stripe or UnitPay (Unitpay.ru LLC), as shown on the payment page. Each provider is certified to PCI DSS Level 1. You can pay with a bank card (Visa, Mastercard) or with any other payment method available on the payment page.
 Card details are entered on the payment page of the payment service provider. We do not receive or store your full card details (see Appendix 1, Information Security Policy).
 Your order is accepted once payment is successful. We send a confirmation of your order and payment to your email address.
 If the currency of your card differs from the payment currency, your bank converts the amount at its own rate. Your bank or the payment service provider may charge additional fees for currency conversion or cross-border payments. These fees are outside our control.
@@ -26,7 +26,7 @@ From time to time we may offer promotional codes or discounts. Each code is vali
 
 ## Subscription (recurring payments)
 
-In addition to one-time purchases, the Service may offer a paid subscription that renews monthly. The subscription price, what it includes and any limits are shown on the Site before payment.
+In addition to one-time purchases, the Service may offer a paid subscription that renews monthly. The subscription price, what it includes and any limits are shown on the Site before payment. The subscription is available only with payment methods that support recurring charges; if the payment method you choose does not support them, the subscription is not offered for that method.
 **Automatic renewal.** By purchasing a subscription, you authorize us to charge the subscription price to your saved payment method every month. The charge repeats automatically at the start of each billing period until you cancel. If a subscription is offered with a free or discounted first period, the full price is charged automatically when that period ends unless you cancel before then, and the date of the first full charge is shown before you subscribe.
 **Cancellation.** You can cancel your subscription at any time in your account, through the cancellation link on the Site, or through the link included in our emails. Your access continues until the end of the period you have already paid for. Cancelling stops future charges but does not refund payments already made, except as described under "Refunds and cancellations".
 **Price changes.** We may change the subscription price for future billing periods. We will notify you by email at least 7 days before the first charge at the new price. A price change does not apply to a period you have already paid for, and you can cancel before the new price takes effect.
@@ -126,6 +126,7 @@ These Terms, together with the documents referred to in them, are the entire agr
 
 Celementa FZCO
 Registration number 16116518
+Registered by the Dubai Silicon Oasis Authority (DSOA), Dubai, United Arab Emirates
 Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE
 Email: [support@mezmo-song.com](mailto:support@mezmo-song.com)
 Phone: +7 911 816-89-33

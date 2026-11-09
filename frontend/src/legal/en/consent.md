@@ -1,7 +1,7 @@
 # Consent to the Processing of Personal Data
 
-Last updated: October 23, 2026
-By ticking the consent box on the website mezmo-song.com (the "Site") and placing an order, I freely, specifically and knowingly give my consent to Celementa FZCO, registration number 16116518, Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE (the "Operator"), to process my personal data on the following terms.
+Last updated: November 9, 2026
+By ticking the consent box on the website mezmo-song.com (the "Site") and placing an order, I freely, specifically and knowingly give my consent to Celementa FZCO, registration number 16116518, registered by the Dubai Silicon Oasis Authority (DSOA), Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE (the "Operator"), to process my personal data on the following terms.
 
 ## Personal data covered
 
@@ -26,7 +26,7 @@ Collection, recording, organization, storage, updating, use, transfer (including
 
 ## Transfer to third parties and abroad
 
-I agree that my personal data, to the extent necessary for the purposes above, may be transferred to the payment service provider UnitPay; to providers of hosting, cloud storage, email delivery and other technical services; to providers of AI generation services (song order data only); and, if I have accepted analytics and advertising cookies, to Google (Google Analytics, Google Ads), Meta Platforms (Meta Pixel and Conversions API) and Yandex (Yandex Ads, Yandex Metrica). I understand that these recipients may be located outside my country of residence and outside the UAE, including in the United States, the European Union and the Russian Federation, where the level of data protection may differ from my country.
+I agree that my personal data, to the extent necessary for the purposes above, may be transferred to the payment service providers Stripe or UnitPay, as shown on the payment page; to providers of hosting, cloud storage, email delivery and other technical services; to providers of AI generation services (song order data only); and, if I have accepted analytics and advertising cookies, to Google (Google Analytics, Google Ads), Meta Platforms (Meta Pixel and Conversions API) and Yandex (Yandex Ads, Yandex Metrica). I understand that these recipients may be located outside my country of residence and outside the UAE, including in the United States, the European Union and the Russian Federation, where the level of data protection may differ from my country.
 
 ## Data about other people
 

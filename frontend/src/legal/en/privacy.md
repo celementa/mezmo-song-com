@@ -1,10 +1,10 @@
 # Privacy Policy
 
-Last updated: October 23, 2026
+Last updated: November 9, 2026
 
 ## Who we are
 
-This Privacy Policy explains how Celementa FZCO, a company registered in the Dubai Silicon Oasis free zone, United Arab Emirates, registration number 16116518, address: Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE ("Mezmo", "we", "us" or "our"), collects, uses, shares and protects personal data when you use the website mezmo-song.com (the "Site") and order personalized songs (the "Service").
+This Privacy Policy explains how Celementa FZCO, a company registered in the Dubai Silicon Oasis free zone with the Dubai Silicon Oasis Authority (DSOA), United Arab Emirates, registration number 16116518, address: Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE ("Mezmo", "we", "us" or "our"), collects, uses, shares and protects personal data when you use the website mezmo-song.com (the "Site") and order personalized songs (the "Service").
 We are the controller of the personal data described in this Policy. We process personal data in accordance with the laws of the United Arab Emirates, including Federal Decree-Law No. 45 of 2021 on the Protection of Personal Data, and with the mandatory data protection laws of your country of residence where they apply, such as the EU General Data Protection Regulation ("GDPR"), the UK GDPR and US state privacy laws.
 Questions about this Policy can be sent to [support@mezmo-song.com](mailto:support@mezmo-song.com).
 
@@ -24,7 +24,7 @@ Questions about this Policy can be sent to [support@mezmo-song.com](mailto:suppo
 - **Contact data:** your name, email address and phone number, if you provide them when ordering or contacting us.
 - **Song order data:** the recipient's name, your relationship to the recipient, the recipient's gender (to use the correct grammatical forms), the occasion, your story and wishes, the chosen mood, genre or vocal style, any lyrics or edits you submit, and revision requests.
 - **Generated content:** the lyrics and audio files created for your order, including earlier versions created through revisions.
-- **Payment data:** payments are processed by our payment service provider UnitPay. We do not receive or store full card numbers or security codes. We receive only what is needed to confirm the order: payment status, amount, currency, payment identifier and, where available, a masked card number (for example 4111 11** **** 1111). For subscriptions, the payment provider stores a token of your payment method for recurring charges until you cancel.
+- **Payment data:** payments are processed by our payment service providers Stripe or UnitPay, as shown on the payment page. We do not receive or store full card numbers or security codes. We receive only what is needed to confirm the order: payment status, amount, currency, payment identifier and, where available, a masked card number (for example 4111 11** **** 1111). For subscriptions, the payment provider stores a token of your payment method for recurring charges until you cancel.
 - **Subscription data:** subscription status, billing dates, renewal and cancellation history.
 - **Communications:** messages you send to customer support and our replies, and feedback you choose to give.
 
@@ -101,7 +101,7 @@ To create your song, we send the song order data you entered (such as the recipi
 
 We share personal data only to the extent necessary, with:
 
-- **Payment service provider** (UnitPay), to process one-time and recurring payments;
+- **Payment service providers** (Stripe or UnitPay, as shown on the payment page), to process one-time and recurring payments;
 - **AI generation providers**, to create lyrics and music (see "AI processing");
 - **Hosting, cloud storage and infrastructure providers**, to run the Site and store your songs;
 - **Email delivery providers**, to send order and subscription emails;
@@ -165,6 +165,7 @@ We may update this Policy by publishing a new version on the Site with a new "La
 
 Celementa FZCO
 Registration number 16116518
+Registered by the Dubai Silicon Oasis Authority (DSOA), Dubai, United Arab Emirates
 Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE
 Email: [support@mezmo-song.com](mailto:support@mezmo-song.com)
 Phone: +7 911 816-89-33

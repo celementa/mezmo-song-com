@@ -16,6 +16,7 @@ import { ShieldCheck } from 'lucide-react'
 import { StepShell } from '@/routes/create/StepShell'
 import { formatMoney, type OrderCurrency } from '@/lib/currency'
 import { localePath, useTr } from '@/lib/lang'
+import { legalDocPath, legalEntityForProvider, type LegalEntity } from '@/lib/site'
 import { PaymentLogos } from '@/components/landing/PaymentLogos'
 import { loadYookassaWidget } from './loadYookassaWidget'
 import { saveStripeSession } from './stripeSession'
@@ -77,6 +78,7 @@ export function UnitPayCheckout({
   amount,
   currency,
   provider = 'unitpay',
+  legalEntity,
   original,
   perMonth = false,
   summary,
@@ -89,6 +91,12 @@ export function UnitPayCheckout({
   currency: OrderCurrency
   /** Провайдер ветки: ЮKassa/Stripe/UnitPay. */
   provider?: 'yookassa' | 'stripe' | 'unitpay'
+  /**
+   * Юрлицо документов: 'ru' — ООО «МБК», 'en' — Celementa FZCO. Приходит из
+   * выбранной ветки, а не из языка страницы. Без него определяется по
+   * провайдеру (ЮKassa → МБК, Stripe/UnitPay → FZCO).
+   */
+  legalEntity?: LegalEntity
   original?: number | null
   perMonth?: boolean
   /** Что покупается: кому, повод, куда придёт песня. */
@@ -97,6 +105,7 @@ export function UnitPayCheckout({
   onPaid: () => void
 }) {
   const tr = useTr()
+  const entity = legalEntity ?? legalEntityForProvider(provider)
   const money = (value: number) => formatMoney(value, currency) + (perMonth ? tr('/мес', '/mo') : '')
   const [agreed, setAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -223,19 +232,19 @@ export function UnitPayCheckout({
         />
         <span>
           {tr('Я принимаю', 'I accept the')}{' '}
-          <Link to={localePath('/terms')} target="_blank" className={linkClass}>
+          <Link to={legalDocPath('terms', entity)} target="_blank" className={linkClass}>
             {tr('Пользовательское соглашение', 'Terms of Use')}
           </Link>{' '}
           ({tr('включая', 'including the')}{' '}
-          <Link to={localePath('/security')} target="_blank" className={linkClass}>
+          <Link to={legalDocPath('security', entity)} target="_blank" className={linkClass}>
             {tr('Политику информационной безопасности', 'Information Security Policy')}
           </Link>
           ) {tr('и даю', 'and give')}{' '}
-          <Link to={localePath('/consent')} target="_blank" className={linkClass}>
+          <Link to={legalDocPath('consent', entity)} target="_blank" className={linkClass}>
             {tr('согласие на обработку персональных данных', 'consent to the processing of personal data')}
           </Link>{' '}
           {tr('в соответствии с', 'in accordance with the')}{' '}
-          <Link to={localePath('/privacy')} target="_blank" className={linkClass}>
+          <Link to={legalDocPath('privacy', entity)} target="_blank" className={linkClass}>
             {tr('Политикой конфиденциальности', 'Privacy Policy')}
           </Link>
           .

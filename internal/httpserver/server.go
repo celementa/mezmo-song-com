@@ -430,7 +430,9 @@ func (s *Server) handleAdminSettingsPut(w http.ResponseWriter, r *http.Request) 
 
 	ctx := r.Context()
 	if body.RUProvider != nil {
-		if v := strings.ToLower(strings.TrimSpace(*body.RUProvider)); v != "yookassa" && v != "unitpay" {
+		// Рублёвая ветка — только ЮKassa: с ней связаны документы ООО «МБК».
+		// UnitPay принимает доллары в международной ветке.
+		if v := strings.ToLower(strings.TrimSpace(*body.RUProvider)); v != "yookassa" {
 			writeJSON(w, 400, map[string]string{"error": "bad_provider"})
 			return
 		}

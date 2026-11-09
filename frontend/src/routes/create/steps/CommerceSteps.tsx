@@ -14,6 +14,7 @@ import { GOLD, StepShell } from '../StepShell'
 import { UnitPayCheckout, type PaymentMode, type PaymentStart } from '@/features/payment/UnitPayCheckout'
 import { canSellSubscription } from '@/features/payment/capabilities'
 import { formatMoney } from '@/lib/currency'
+import { legalEntityForBranch } from '@/lib/site'
 import { shellProps, type StepProps } from '../types'
 import { intlLocale, tr as trText, useTr } from '@/lib/lang'
 import { reportEngagement } from '@/lib/engagement'
@@ -116,6 +117,7 @@ export function PaymentStep(p: StepProps & { start: (mode: PaymentMode) => Promi
       amount={total}
       currency={p.currency}
       provider={p.provider}
+      legalEntity={p.order.paymentBranch ? legalEntityForBranch(p.order.paymentBranch) : undefined}
       original={p.originalPrice}
       summary={
         p.form.email ? <p>{tr(`Ссылка на песню придёт на ${p.form.email}`, `The song link will be sent to ${p.form.email}`)}</p> : null

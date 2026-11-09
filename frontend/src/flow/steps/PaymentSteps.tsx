@@ -129,6 +129,7 @@ export function CheckoutStep({
   amount,
   currency,
   provider,
+  legalEntity,
   original,
   perMonth = false,
   summary,
@@ -139,6 +140,8 @@ export function CheckoutStep({
   amount: number
   currency: OrderCurrency
   provider?: 'yookassa' | 'stripe' | 'unitpay'
+  /** Юрлицо документов по выбранной ветке: 'ru' — МБК, 'en' — FZCO. */
+  legalEntity?: 'ru' | 'en'
   original?: number | null
   /** Первый платёж подписки: сумма подписана «в месяц». */
   perMonth?: boolean
@@ -152,6 +155,7 @@ export function CheckoutStep({
       amount={amount}
       currency={currency}
       provider={provider}
+      legalEntity={legalEntity}
       original={original}
       perMonth={perMonth}
       summary={summary}

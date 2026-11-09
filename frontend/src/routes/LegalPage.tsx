@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 
-import { LEGAL_LINKS, companyFor, companyLines, type LegalDoc } from '@/lib/site'
+import { LEGAL_LINKS, companyFor, companyLines, legalDocPath, type LegalDoc } from '@/lib/site'
 import { localePath, useLang, useTr } from '@/lib/lang'
 import { openCookieSettings } from '@/lib/consent'
 
@@ -12,16 +12,28 @@ import { openCookieSettings } from '@/lib/consent'
  * нужна минимальная (заголовки, абзацы, списки, жирный, ссылки, черта), и под
  * неё хватает маленького рендера ниже без библиотеки. Английские версии —
  * src/legal/en/*.md (их прислала заказчица, в них есть таблицы).
+ *
+ * Какое юрлицо показывать, решает не язык страницы, а `?entity=`, который
+ * ставит шаг оплаты по выбранной ветке: рублёвая — ООО «МБК», международная
+ * (Stripe/UnitPay) — Celementa FZCO. Без параметра (лендинг, прямые ссылки)
+ * юрлицо берётся по языку.
  */
 const DOCS = import.meta.glob<string>(['../legal/*.md', '../legal/en/*.md'], { query: '?raw', import: 'default', eager: true })
 
 export function LegalPage({ doc }: { doc: LegalDoc }) {
   const lang = useLang()
   const tr = useTr()
-  // Реквизиты под документом — по языку: русские тексты описывают ООО «МБК»,
-  // английские — Celementa FZCO (см. src/legal и src/legal/en).
-  const company = companyFor(lang)
-  const source = DOCS[lang === 'en' ? `../legal/en/${doc}.md` : `../legal/${doc}.md`] ?? ''
+  const [params] = useSearchParams()
+  const entity = params.get('entity')
+  // Язык документов = язык юрлица. Язык обвязки (кнопки, подписи) остаётся
+  // языком страницы: на /en с российской картой человек видит русские тексты
+  // МБК, но навигация остаётся английской.
+  const docLang = entity === 'ru' || entity === 'en' ? entity : lang
+  const company = companyFor(docLang)
+  const source = DOCS[docFile(docLang, doc)] ?? ''
+  // Оферта включает политику информационной безопасности целиком (Приложение 1),
+  // а не только ссылку на отдельную страницу — этого требует банк.
+  const appendix = doc === 'terms' ? DOCS[docFile(docLang, 'security')] ?? '' : ''
 
   return (
     <div className="min-h-screen bg-white">
@@ -33,6 +45,12 @@ export function LegalPage({ doc }: { doc: LegalDoc }) {
 
         <article className="space-y-4 text-[15px] leading-relaxed text-gray-600">{renderMarkdown(source)}</article>
 
+        {appendix ? (
+          <article className="mt-12 space-y-4 border-t border-gray-200 pt-8 text-[15px] leading-relaxed text-gray-600">
+            {renderMarkdown(demoteHeadings(appendix))}
+          </article>
+        ) : null}
+
         <footer className="mt-12 border-t border-gray-100 pt-6 text-xs leading-relaxed text-gray-400">
           <div>
             {companyLines(company, lang).join(' · ')} ·{' '}
@@ -40,7 +58,7 @@ export function LegalPage({ doc }: { doc: LegalDoc }) {
           </div>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
             {LEGAL_LINKS.map((l) => (
-              <Link key={l.doc} to={localePath(`/${l.doc}`)} className="hover:text-gray-600">{l.label[lang]}</Link>
+              <Link key={l.doc} to={legalDocPath(l.doc, docLang)} className="hover:text-gray-600">{l.label[lang]}</Link>
             ))}
             <button type="button" onClick={openCookieSettings} className="hover:text-gray-600">{tr('Настройки cookie', 'Cookie settings')}</button>
           </div>
@@ -48,6 +66,16 @@ export function LegalPage({ doc }: { doc: LegalDoc }) {
       </div>
     </div>
   )
+}
+
+/** Путь markdown-файла: русские тексты лежат в корне legal/, английские — в en/. */
+function docFile(lang: 'ru' | 'en', doc: LegalDoc): string {
+  return lang === 'en' ? `../legal/en/${doc}.md` : `../legal/${doc}.md`
+}
+
+/** Понижает заголовки приложения на уровень: политика внутри оферты — её раздел. */
+function demoteHeadings(md: string): string {
+  return md.replace(/^(#{1,2}) /gm, '#$1 ')
 }
 
 function renderMarkdown(md: string): ReactNode[] {
