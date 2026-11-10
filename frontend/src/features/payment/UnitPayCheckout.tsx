@@ -1,15 +1,15 @@
 /**
- * Шаг оплаты mezmo-song.com: сумма, обязательное согласие с офертой
- * (требование банка) и переход на платёжную форму UnitPay.
+ * Шаг оплаты mezmo-song.com: сумма, обязательные согласия (требование банка)
+ * и переход к платёжной форме провайдера.
  *
  * Сервер заводит платёж (initPayment) только по кнопке, а не при показе шага:
- * без принятой оферты платить нельзя. Ответ — widgetUrl: та же форма UnitPay
- * открывается окном поверх сайта (UnitPayWidget), после оплаты покупатель
- * уходит на returnUrl. Нет widgetUrl — переход на форму по confirmationUrl,
- * откуда UnitPay возвращает на resultUrl, который задал сервер.
+ * без принятых согласий платить нельзя. Сама форма всегда открывается отдельным
+ * экраном: Stripe — /pay/stripe, ЮKassa — /pay/yookassa, UnitPay — /pay/unitpay.
+ * Нет widgetUrl — переход на форму по confirmationUrl, откуда провайдер
+ * возвращает на resultUrl, который задал сервер.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ShieldCheck } from 'lucide-react'
 
@@ -18,8 +18,9 @@ import { formatMoney, type OrderCurrency } from '@/lib/currency'
 import { localePath, useTr } from '@/lib/lang'
 import { legalDocPath, legalEntityForProvider, type LegalEntity } from '@/lib/site'
 import { PaymentLogos } from '@/components/landing/PaymentLogos'
-import { loadYookassaWidget } from './loadYookassaWidget'
 import { saveStripeSession } from './stripeSession'
+import { saveUnitpaySession } from './unitpaySession'
+import { saveYookassaSession } from './yookassaSession'
 
 export type PaymentMode = 'embedded' | 'redirect'
 
@@ -114,10 +115,6 @@ export function UnitPayCheckout({
   const [dataAgreed, setDataAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [widget, setWidget] = useState<{ url: string; returnUrl: string } | null>(null)
-  // Виджет ЮKassa живёт прямо на странице — человек не уходит на чужой домен и,
-  // значит, не зависит от того, вернёт ли его банковское приложение обратно.
-  const [yoo, setYoo] = useState<{ token: string; returnUrl: string } | null>(null)
 
   const pay = async () => {
     if (!offerAgreed) {
@@ -156,11 +153,17 @@ export function UnitPayCheckout({
         return
       }
       if (res.confirmationToken && res.returnUrl) {
-        setYoo({ token: res.confirmationToken, returnUrl: res.returnUrl })
+        // Форма ЮKassa открывается на отдельной странице: на экране только она,
+        // без сводки и автоскролла. confirmation_token — в sessionStorage.
+        saveYookassaSession({ confirmationToken: res.confirmationToken, returnUrl: res.returnUrl })
+        window.location.assign(localePath('/pay/yookassa'))
         return
       }
       if (res.widgetUrl && res.returnUrl) {
-        setWidget({ url: res.widgetUrl, returnUrl: res.returnUrl })
+        // Форма UnitPay тоже открывается отдельным экраном: на странице только
+        // iframe провайдера, без сводки заказа под ним.
+        saveUnitpaySession({ widgetUrl: res.widgetUrl, returnUrl: res.returnUrl })
+        window.location.assign(localePath('/pay/unitpay'))
         return
       }
       if (res.confirmationUrl) {
@@ -197,14 +200,12 @@ export function UnitPayCheckout({
         'A personal song based on your story: audio file and lyrics, lifetime access.',
       )}
       primaryLabel={
-        yoo
-          ? tr('Форма оплаты открыта ниже', 'Payment form is open below')
-          : busy
-            ? tr('Открываем оплату…', 'Opening payment…')
-            : tr(`Оплатить ${money(amount)}`, `Pay ${money(amount)}`)
+        busy
+          ? tr('Открываем оплату…', 'Opening payment…')
+          : tr(`Оплатить ${money(amount)}`, `Pay ${money(amount)}`)
       }
       onPrimary={() => void pay()}
-      primaryDisabled={!offerAgreed || !dataAgreed || busy || Boolean(yoo)}
+      primaryDisabled={!offerAgreed || !dataAgreed || busy}
     >
       <div className="rounded-2xl border border-[#EFE4D2] bg-white p-4">
         <div className="flex items-baseline justify-between gap-3">
@@ -294,104 +295,8 @@ export function UnitPayCheckout({
         </p>
         {provider === 'stripe' ? <StripeLogos /> : provider === 'yookassa' ? <RuLogos /> : <PaymentLogos />}
       </div>
-      {yoo ? (
-        <YookassaCheckoutWidget
-          confirmationToken={yoo.token}
-          returnUrl={yoo.returnUrl}
-          onError={() =>
-            setError(
-              tr(
-                'Не получилось открыть форму ЮKassa. Попробуйте ещё раз или выберите другой способ оплаты.',
-                "Couldn't open the YooKassa form. Please try again or choose another payment method.",
-              ),
-            )
-          }
-        />
-      ) : null}
-      {widget ? (
-        <UnitPayWidget
-          url={widget.url}
-          onSuccess={() => window.location.assign(widget.returnUrl)}
-          onClose={() => {
-            setWidget(null)
-            setBusy(false)
-          }}
-        />
-      ) : null}
     </StepShell>
   )
-}
-
-const WIDGET_ORIGIN = 'https://widget.unitpay.money'
-
-/**
- * Платёжный виджет UnitPay: их форма во iframe на весь экран. Делает то же,
- * что их widget.js, но без него: тот вешает глобальный window.onmessage и не
- * проверяет, от кого пришло сообщение. Форма шлёт родителю JSON-строки
- * {action: 'success' | 'close' | ...}. Оплату засчитывает только уведомление
- * UnitPay серверу — 'success' лишь уводит на страницу заказа, которая ждёт его.
- */
-/**
- * Виджет ЮKassa: карта, СБП, SberPay, ЮMoney — прямо на нашей странице, без
- * ухода на чужой домен. Поэтому возврат с оплаты перестаёт зависеть от того,
- * вернёт ли человека приложение банка: страница заказа сама опрашивает статус,
- * а кнопка «Оплатить» остаётся на месте.
- */
-export function YookassaCheckoutWidget({
-  confirmationToken,
-  returnUrl,
-  onError,
-}: {
-  confirmationToken: string
-  returnUrl: string
-  onError: () => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  // Виджет рендерится по id контейнера, а не по ссылке на узел.
-  const [containerId] = useState(() => `yookassa-widget-${Math.random().toString(36).slice(2)}`)
-  const onErrorRef = useRef(onError)
-  useEffect(() => {
-    onErrorRef.current = onError
-  }, [onError])
-  useEffect(() => {
-    let alive = true
-    let widget: { destroy: () => void } | null = null
-    void loadYookassaWidget()
-      .then(() => {
-        const Ctor = window.YooMoneyCheckoutWidget
-        if (!Ctor) throw new Error('yookassa_widget_missing')
-        const instance = new Ctor({
-          confirmation_token: confirmationToken,
-          return_url: returnUrl,
-          error_callback: () => {
-            if (alive) onErrorRef.current()
-          },
-        })
-        // success — платёж прошёл: уводим на страницу заказа. Засчитывает оплату
-        // только уведомление ЮKassa (или сверка), страница его дождётся.
-        instance.on('success', () => window.location.assign(returnUrl))
-        instance.on('fail', () => {
-          if (alive) onErrorRef.current()
-        })
-        return instance.render(containerId).then(() => {
-          if (!alive) {
-            instance.destroy()
-            return
-          }
-          widget = instance
-          // Форма монтируется внизу шага — подводим к ней экран, как у Stripe.
-          ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        })
-      })
-      .catch(() => {
-        if (alive) onErrorRef.current()
-      })
-    return () => {
-      alive = false
-      widget?.destroy()
-    }
-  }, [confirmationToken, returnUrl, containerId])
-  return <div id={containerId} ref={ref} className="mt-4 min-h-[420px]" />
 }
 
 function RuLogos() {
@@ -410,35 +315,6 @@ function StripeLogos() {
       {['Visa', 'Mastercard', 'Apple Pay', 'Google Pay'].map((m) => (
         <span key={m} className="rounded-md border border-[#E7DAC5] bg-white px-1.5 py-0.5">{m}</span>
       ))}
-    </div>
-  )
-}
-
-function UnitPayWidget({ url, onSuccess, onClose }: { url: string; onSuccess: () => void; onClose: () => void }) {
-  const tr = useTr()
-  useEffect(() => {
-    const onMessage = (e: MessageEvent) => {
-      if (e.origin !== WIDGET_ORIGIN || typeof e.data !== 'string') return
-      let action: unknown
-      try {
-        action = (JSON.parse(e.data) as { action?: unknown }).action
-      } catch {
-        return
-      }
-      if (action === 'success') onSuccess()
-      if (action === 'close') onClose()
-    }
-    window.addEventListener('message', onMessage)
-    document.body.classList.add('overflow-hidden')
-    return () => {
-      window.removeEventListener('message', onMessage)
-      document.body.classList.remove('overflow-hidden')
-    }
-  }, [onSuccess, onClose])
-
-  return (
-    <div className="fixed inset-0 z-[99999] bg-black/60">
-      <iframe src={url} title={tr('Оплата UnitPay', 'UnitPay payment')} allow="payment" className="h-full w-full border-0 bg-transparent" />
     </div>
   )
 }

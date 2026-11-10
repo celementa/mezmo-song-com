@@ -28,6 +28,8 @@ const AdminEmailsRoute = lazy(() => import('@/routes/AdminEmailsRoute').then((m)
 const LegalPage = lazy(() => import('@/routes/LegalPage').then((m) => ({ default: m.LegalPage })))
 const ContactPage = lazy(() => import('@/routes/ContactPage').then((m) => ({ default: m.ContactPage })))
 const PayStripeRoute = lazy(() => import('@/routes/PayStripeRoute').then((m) => ({ default: m.PayStripeRoute })))
+const PayYookassaRoute = lazy(() => import('@/routes/PayYookassaRoute').then((m) => ({ default: m.PayYookassaRoute })))
+const PayUnitpayRoute = lazy(() => import('@/routes/PayUnitpayRoute').then((m) => ({ default: m.PayUnitpayRoute })))
 
 function LazyFallback() {
   return (
@@ -108,6 +110,28 @@ const contentPages: RouteObject[] = [
       <Suspense fallback={<LazyFallback />}>
         <ThemeProvider themeSlug={null}>
           <PayStripeRoute />
+        </ThemeProvider>
+      </Suspense>
+    ),
+  },
+  {
+    // Форма ЮKassa на отдельном экране: без автоскролла и сводки заказа.
+    path: '/pay/yookassa',
+    element: (
+      <Suspense fallback={<LazyFallback />}>
+        <ThemeProvider themeSlug={null}>
+          <PayYookassaRoute />
+        </ThemeProvider>
+      </Suspense>
+    ),
+  },
+  {
+    // Форма UnitPay на отдельном экране: iframe провайдера на весь экран.
+    path: '/pay/unitpay',
+    element: (
+      <Suspense fallback={<LazyFallback />}>
+        <ThemeProvider themeSlug={null}>
+          <PayUnitpayRoute />
         </ThemeProvider>
       </Suspense>
     ),

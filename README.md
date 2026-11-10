@@ -104,6 +104,7 @@ SPA-фолбэк на `index.html`), Let's Encrypt через certbot с авт�
 | Воронка `/config` | `frontend/src/flow/FlowRoute.tsx` (вход — `routes/FlowEntry.tsx`) |
 | Воронка `/create` (prepay) | `frontend/src/routes/create/` |
 | Шаг оплаты (обе воронки) | `frontend/src/features/payment/UnitPayCheckout.tsx` |
+| Формы оплаты на отдельных экранах | `frontend/src/routes/PayStripeRoute.tsx`, `frontend/src/routes/PayYookassaRoute.tsx`, `frontend/src/routes/PayUnitpayRoute.tsx` (сессии — `features/payment/*Session.ts`); без автоскролла и сводки заказа |
 | Страница заказа | `frontend/src/routes/OrderDeliveryRoute.tsx` |
 | Язык сайта (RU на корне, EN под `/en`) | `frontend/src/lib/lang.ts` (`tr('рус', 'eng')`, `localePath`), переключатель — `components/LangSwitch.tsx`, ранний редирект по языку браузера — `index.html` |
 | Английские тексты лендинга | `frontend/intl/landing.en.json` — оверлей поверх `publicSiteConfig` (`useLandingData`) |
