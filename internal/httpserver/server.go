@@ -195,9 +195,12 @@ func firstNonEmpty(v, fallback string) string {
 
 func (s *Server) handlePublicSettings(w http.ResponseWriter, r *http.Request) {
 	resp := publicSettingsResponse(s.Config)
-	// trackTestOrders — единственная настройка из БД в публичном ответе: фронт
-	// решает, отбивать ли браузерные события для тестовых (INTERNAL) заказов.
+	// trackTestOrders — настройка из БД: фронт решает, отбивать ли браузерные
+	// события для тестовых (INTERNAL) заказов.
 	resp["trackTestOrders"] = store.GetSetting(r.Context(), s.DB, settingTrackTestOrders, "0") == "1"
+	// pricesOnRoot — какая из двух версий лендинга показывает цены. Значение
+	// нужно до отрисовки: от него зависят CTA и ценник на главной.
+	resp["pricesOnRoot"] = store.GetSetting(r.Context(), s.DB, settingPricesOnRoot, "1") == "1"
 	// Цена на главной — в валюте языка: /ru в рублях, /en в долларах. Это две
 	// независимые цены плеча, а не пересчёт по курсу. paymentAmount остаётся
 	// историческим полем в долларах для старых клиентов.
@@ -227,6 +230,11 @@ func (s *Server) handlePublicSettings(w http.ResponseWriter, r *http.Request) {
 // settingTrackTestOrders — «1»: браузерная аналитика отбивает и тестовые
 // (INTERNAL) заказы; «0» (дефолт): тестовые заказы в аналитику не попадают.
 const settingTrackTestOrders = "analytics.track_test_orders"
+
+// settingPricesOnRoot — «1» (дефолт): цены и кнопки покупки показывает главная
+// (/ru, /en), а /start — её копия без цен. «0» возвращает прежний порядок:
+// главная без цен, полная версия на /start.
+const settingPricesOnRoot = "landing.prices_on_root"
 
 // maxRegenerationSetting — верхняя граница для полей лимита доработок в админке.
 // Каждая доработка — это платный прогон OpenRouter и Kie, поэтому трёхзначные
@@ -266,6 +274,7 @@ func (s *Server) adminSettings(ctx context.Context) map[string]any {
 
 	return map[string]any{
 		"trackTestOrders":       store.GetSetting(ctx, s.DB, settingTrackTestOrders, "0") == "1",
+		"pricesOnRoot":          store.GetSetting(ctx, s.DB, settingPricesOnRoot, "1") == "1",
 		"regenerationsClient":   client,
 		"regenerationsInternal": internal,
 		"flowArms":              arms,
@@ -399,6 +408,7 @@ func (s *Server) handleAdminSettingsGet(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleAdminSettingsPut(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		TrackTestOrders       *bool          `json:"trackTestOrders"`
+		PricesOnRoot          *bool          `json:"pricesOnRoot"`
 		RegenerationsClient   *int           `json:"regenerationsClient"`
 		RegenerationsInternal *int           `json:"regenerationsInternal"`
 		FlowArms              []flowArmPatch `json:"flowArms"`
@@ -417,7 +427,7 @@ func (s *Server) handleAdminSettingsPut(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, 400, map[string]string{"error": "bad_request"})
 		return
 	}
-	empty := body.TrackTestOrders == nil && body.RegenerationsClient == nil && body.RegenerationsInternal == nil &&
+	empty := body.TrackTestOrders == nil && body.PricesOnRoot == nil && body.RegenerationsClient == nil && body.RegenerationsInternal == nil &&
 		len(body.FlowArms) == 0 && body.PreviewDailyBudget == nil &&
 		body.FreeGenPerVisitor == nil && body.FreeGenPerIP == nil && body.PreviewEnabled == nil &&
 		body.SaveCardInFunnel == nil &&
@@ -457,6 +467,16 @@ func (s *Server) handleAdminSettingsPut(w http.ResponseWriter, r *http.Request) 
 			value = "1"
 		}
 		if err := store.SetSetting(ctx, s.DB, settingTrackTestOrders, value); err != nil {
+			writeJSON(w, 500, map[string]string{"error": "db"})
+			return
+		}
+	}
+	if body.PricesOnRoot != nil {
+		value := "0"
+		if *body.PricesOnRoot {
+			value = "1"
+		}
+		if err := store.SetSetting(ctx, s.DB, settingPricesOnRoot, value); err != nil {
 			writeJSON(w, 500, map[string]string{"error": "db"})
 			return
 		}
@@ -3002,6 +3022,7 @@ func publicSettingsResponse(c config.Config) map[string]any {
 		"deliveryDelayHours":        0,
 		"manualConfirmationEnabled": false,
 		"paymentsEnabled":           true,
+		"pricesOnRoot":              true,
 		"paymentAmount":             base,
 		"originalAmount":            original,
 		"metaPixelId":               nil,

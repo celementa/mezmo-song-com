@@ -82,8 +82,9 @@ export function PublicRoot() {
     // должен видеть пару /ru/… ↔ /en/… для каждого шага флоу.
     const base = 'https://mezmo-song.com'
     const path = stripLang(location.pathname)
-    // /start — копия главной с ценами. Она не должна конкурировать с главной
-    // (без цен) в поиске: canonical на главную и явный noindex.
+    // /start — копия главной. Она не должна конкурировать с главной в поиске:
+    // canonical на главную и явный noindex. Режим цен у адресов переключается
+    // настройкой «Цены на главной», на индексацию это не влияет.
     const isStart = path === '/start'
     const suffix = path === '/' ? '' : path
     const ru = `${base}/ru${suffix}`

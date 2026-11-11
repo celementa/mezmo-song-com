@@ -23,6 +23,8 @@ type FlowArm = {
 
 type Settings = {
   trackTestOrders: boolean
+  /** Показывает ли главная (/ru, /en) цены; иначе они на /start. */
+  pricesOnRoot: boolean
   regenerationsClient: number
   regenerationsInternal: number
   // Краны A/B-флоу (вариант 1). 0 в любом числовом поле означает «выключено /
@@ -249,6 +251,20 @@ export function AdminSettingsRoute() {
 
         {settings && (
           <>
+            <h2 className="mb-3 mt-8 text-lg font-bold text-gray-900">Главная страница</h2>
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+              <SettingRow
+                title="Цены на главной"
+                hint="Включено — /ru и /en показывают лендинг с ценами и кнопками покупки, а /start остаётся его копией без цен для проверок и рекламы. Выключено — наоборот: главная без цен, полная версия на /start. Переключается без деплоя и применяется при следующей загрузке страницы."
+              >
+                <Toggle
+                  checked={settings.pricesOnRoot}
+                  onChange={(v) => save({ pricesOnRoot: v })}
+                  disabled={busy}
+                />
+              </SettingRow>
+            </div>
+
             <h2 className="mb-3 mt-8 text-lg font-bold text-gray-900">Платёжные провайдеры</h2>
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
               <SettingRow

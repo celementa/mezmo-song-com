@@ -21,6 +21,7 @@
   "originalAmount": 75,
   "paymentAmount": 25,
   "paymentsEnabled": true,
+  "pricesOnRoot": true,
   "publicSiteConfig": {
     "colors": {
       "accentColor": "#D4AF37",

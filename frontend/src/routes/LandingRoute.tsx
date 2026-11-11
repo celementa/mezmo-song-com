@@ -1,8 +1,16 @@
+import { useLocation } from 'react-router-dom'
+
 import { useLandingData } from '@/hooks/useLandingData'
-import { useTr } from '@/lib/lang'
+import { usePricesOnRoot } from '@/hooks/usePricesOnRoot'
+import { stripLang, useTr } from '@/lib/lang'
 import { getTemplate } from '@/templates'
 
-export function LandingRoute({ hidePrices = false }: { hidePrices?: boolean }) {
+export function LandingRoute() {
+  const { pathname } = useLocation()
+  // Главная и /start — две версии одного лендинга: одна с ценами, другая без.
+  // Какая из них какая, решает настройка «Цены на главной» в админке.
+  const pricesOnRoot = usePricesOnRoot()
+  const hidePrices = stripLang(pathname) === '/start' ? pricesOnRoot : !pricesOnRoot
   const data = useLandingData(hidePrices ? { hidePrices: true } : undefined)
   const tr = useTr()
   // Until /settings resolves the template, paint the hero poster immediately

@@ -65,10 +65,13 @@ function RouteErrorFallback() {
   )
 }
 
-function landing(hidePrices: boolean) {
+// Главная и /start — один лендинг в двух режимах (с ценами и без). Какой режим
+// у главной, решает настройка «Цены на главной» в админке, поэтому маршрут один
+// на оба адреса, а режим выбирает LandingRoute по текущему пути.
+function landing() {
   return (
     <ThemeProvider themeSlug={null}>
-      <LandingRoute hidePrices={hidePrices} />
+      <LandingRoute />
     </ThemeProvider>
   )
 }
@@ -77,10 +80,10 @@ function landing(hidePrices: boolean) {
 // отдельно: у корня редирект, у языковых версий — тот же набор страниц.
 const contentPages: RouteObject[] = [
   {
-    // Копия лендинга с ценами: главная (/ru, /en) цен не показывает, полная
-    // версия остаётся отдельным адресом для рекламы и проверок.
+    // Копия главной: цены показывает либо главная, либо этот адрес — зависит от
+    // настройки «Цены на главной» в админке.
     path: '/start',
-    element: landing(false),
+    element: landing(),
   },
   {
     path: '/config',
@@ -145,9 +148,9 @@ const contentPages: RouteObject[] = [
 ]
 
 const localizedPages: RouteObject[] = (['ru', 'en'] as const).flatMap((lang) => [
-  // Главная — без цен: цена появляется только в шагах заказа. Полная версия
-  // лендинга с ценой живёт на /:lang/start.
-  { path: `/${lang}`, element: landing(true) },
+  // Главная: режим цен выбирает настройка «Цены на главной» в админке, а
+  // вторая версия лендинга живёт на /:lang/start.
+  { path: `/${lang}`, element: landing() },
   ...contentPages.map((page) => ({ ...page, path: `/${lang}${page.path}` })),
 ])
 
