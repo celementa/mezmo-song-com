@@ -120,7 +120,9 @@ export function PostPaymentUpsell({
       const msg = e instanceof Error ? e.message : ''
       if (msg === 'no_saved_method') {
         markUpsellSeen(orderRef)
-        navigate(localePath('/subscribe'))
+        // orderRef обязателен: /subscribe зафиксирует цену плеча (500 ₽), а не общую 990 ₽.
+        // 'ru' — страницы подписки есть только на русском, на /en localePath дал бы /en/subscribe.
+        navigate(localePath(`/subscribe?order=${encodeURIComponent(orderRef)}`, 'ru'))
         return
       }
       setError(

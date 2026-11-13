@@ -375,3 +375,180 @@ func TestSubscriptionRebillAPIRejectMarksAttempt(t *testing.T) {
 		t.Fatalf("status = %s, want %s", fresh.Status, store.SubPastDue)
 	}
 }
+
+// --- T-009: цена ценового плеча на /subscribe ---
+
+// seedArmOrder — оплаченный заказ ценового плеча с заданным email и, если
+// methodID непуст, сохранённой картой ЮKassa: ровно то состояние, из которого
+// апсейл воронки ведёт человека на /subscribe?order=<ref>&email=<email>.
+func seedArmOrder(t *testing.T, s *Server, id, email, arm, methodID string) string {
+	t.Helper()
+	o := store.Order{
+		ID:               id,
+		Status:           "created",
+		DeliveryStatus:   store.DeliveryPending,
+		PaymentStatus:    store.PaymentPaid,
+		InputPayloadJSON: `{"recipientName":"Ира","yourName":"Аня"}`,
+		CustomerJSON:     fmt.Sprintf(`{"email":%q}`, email),
+		BasePrice:        750,
+		CreatedAt:        seedOrderDefaultCreatedAt,
+	}
+	if err := store.CreateOrder(t.Context(), s.DB, o); err != nil {
+		t.Fatalf("seed order %s: %v", id, err)
+	}
+	// CreateOrder не пишет ветку/валюту/способ оплаты — их задаёт платёж.
+	if _, err := s.DB.ExecContext(t.Context(),
+		`UPDATE orders SET flow_variant = ?, currency = 'RUB', yoo_payment_method_id = ? WHERE id = ?`,
+		arm, methodID, id); err != nil {
+		t.Fatalf("seed order %s fields: %v", id, err)
+	}
+	return id
+}
+
+// captureYooCreate поднимает заглушку POST /v3/payments и складывает payload
+// последнего запроса в dst: по нему проверяется сумма и return_url платежа.
+func captureYooCreate(t *testing.T, dst *map[string]any, created *int) {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v3/payments", func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		*dst = payload
+		*created++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":     "pay_arm_1",
+			"status": "pending",
+			"confirmation": map[string]string{
+				"type":             "redirect",
+				"confirmation_url": "https://yoomoney.test/checkout/pay_arm_1",
+			},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	setAPIBaseURL(t, srv.URL)
+}
+
+// Старт подписки с orderRef ценового плеча: платёж выставляется на цену плеча
+// (500 ₽), а не на общую (990 ₽), цена фиксируется в subscriptions.price_rub,
+// return_url ведёт сразу на русскую страницу возврата.
+func TestSubscriptionStartUsesOrderArmPrice(t *testing.T) {
+	var got map[string]any
+	created := 0
+	s := refundTestServer(t)
+	s.Config.WebhookSecret = "test-secret"
+	captureYooCreate(t, &got, &created)
+
+	orderID := seedArmOrder(t, s, "ord_arm_start", "arm@b.c", ArmCom500750s, "")
+	ref := publicOrderRef(s.Config.WebhookSecret, orderID)
+
+	rec := httptest.NewRecorder()
+	s.handleSubscriptionStart(rec, httptest.NewRequest("POST", "/api/subscription/start",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"email":"arm@b.c","mode":"redirect","orderRef":%q}`, ref)))))
+	if rec.Code != 200 {
+		t.Fatalf("start: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if created != 1 {
+		t.Fatalf("платежей создано %d, want 1", created)
+	}
+	amount, _ := got["amount"].(map[string]any)
+	if amount["value"] != "500.00" || amount["currency"] != "RUB" {
+		t.Fatalf("платёж на %v %v, want 500.00 RUB (цена плеча, а не общая 990)", amount["value"], amount["currency"])
+	}
+	conf, _ := got["confirmation"].(map[string]any)
+	if ret, _ := conf["return_url"].(string); !strings.Contains(ret, "/ru/subscribe/return?sid=") {
+		t.Fatalf("return_url = %q, want .../ru/subscribe/return?sid=...", ret)
+	}
+
+	sub, err := store.GetSubscriptionByEmail(t.Context(), s.DB, "arm@b.c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.PriceRub != 500 {
+		t.Fatalf("subscriptions.price_rub = %d, want 500", sub.PriceRub)
+	}
+	if !strings.Contains(rec.Body.String(), `"sid":"`+sub.ID+`"`) {
+		t.Fatalf("ответ без sid подписки: %s", rec.Body.String())
+	}
+}
+
+// Чужой email в теле при заказе плеча — 409 order_email_mismatch: ни платежа,
+// ни записи подписки (цену и email задаёт заказ, а не тело запроса).
+func TestSubscriptionStartRejectsOrderEmailMismatch(t *testing.T) {
+	var got map[string]any
+	created := 0
+	s := refundTestServer(t)
+	s.Config.WebhookSecret = "test-secret"
+	captureYooCreate(t, &got, &created)
+
+	orderID := seedArmOrder(t, s, "ord_arm_alien", "owner@b.c", ArmCom500750s, "")
+	ref := publicOrderRef(s.Config.WebhookSecret, orderID)
+
+	rec := httptest.NewRecorder()
+	s.handleSubscriptionStart(rec, httptest.NewRequest("POST", "/api/subscription/start",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"email":"other@b.c","mode":"redirect","orderRef":%q}`, ref)))))
+	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "order_email_mismatch") {
+		t.Fatalf("чужой email: code=%d body=%s, want 409 order_email_mismatch", rec.Code, rec.Body.String())
+	}
+	if created != 0 {
+		t.Fatalf("платёж создан при чужом email: %d", created)
+	}
+	for _, email := range []string{"other@b.c", "owner@b.c"} {
+		if _, err := store.GetSubscriptionByEmail(t.Context(), s.DB, email); err == nil {
+			t.Fatalf("подписка %s создана несмотря на 409", email)
+		}
+	}
+}
+
+// Прямой заход на /subscribe без orderRef — по-прежнему общая цена 990 ₽.
+func TestSubscriptionStartWithoutOrderUsesDefaultPrice(t *testing.T) {
+	var got map[string]any
+	created := 0
+	s := refundTestServer(t)
+	captureYooCreate(t, &got, &created)
+
+	rec := httptest.NewRecorder()
+	s.handleSubscriptionStart(rec, httptest.NewRequest("POST", "/api/subscription/start",
+		bytes.NewReader([]byte(`{"email":"plain@b.c","mode":"redirect"}`))))
+	if rec.Code != 200 {
+		t.Fatalf("start: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	amount, _ := got["amount"].(map[string]any)
+	if amount["value"] != "990.00" {
+		t.Fatalf("платёж на %v, want 990.00 (общая цена без orderRef)", amount["value"])
+	}
+	sub, err := store.GetSubscriptionByEmail(t.Context(), s.DB, "plain@b.c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subPrice(sub) != 990 || sub.PriceRub != 0 {
+		t.Fatalf("subPrice=%d price_rub=%d, want 990/0", subPrice(sub), sub.PriceRub)
+	}
+}
+
+// Активация по сохранённой карте (апсейл «0 ₽ сегодня») фиксирует рублёвую цену
+// плеча: 500 ₽, а не $15 из arm.SubscriptionPrice — иначе кабинет показывал бы
+// 15 ₽/мес.
+func TestOrderSubscribeUsesRubArmPrice(t *testing.T) {
+	s := refundTestServer(t) // ключи ЮKassa заданы: способ оплаты берётся из заказа
+	seedArmOrder(t, s, "ord_arm_sub", "saved@b.c", ArmCom500750s, "pm_saved_77")
+
+	req := httptest.NewRequest("POST", "/api/orders/ord_arm_sub/subscribe", nil)
+	req.SetPathValue("id", "ord_arm_sub")
+	rec := httptest.NewRecorder()
+	s.handleOrderSubscribe(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("subscribe: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	sub, err := store.GetSubscriptionByEmail(t.Context(), s.DB, "saved@b.c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.PriceRub != 500 || subPrice(sub) != 500 {
+		t.Fatalf("price_rub=%d subPrice=%d, want 500 (рубли плеча, не $15)", sub.PriceRub, subPrice(sub))
+	}
+	if sub.Status != store.SubActive || sub.YooMethodID.String != "pm_saved_77" {
+		t.Fatalf("status=%s method=%q, want active/pm_saved_77", sub.Status, sub.YooMethodID.String)
+	}
+}

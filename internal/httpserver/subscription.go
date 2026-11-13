@@ -118,6 +118,7 @@ func (s *Server) handleSubscriptionStart(w http.ResponseWriter, r *http.Request)
 		Email       string         `json:"email"`
 		Name        string         `json:"name"`
 		Mode        string         `json:"mode"`
+		OrderRef    string         `json:"orderRef"`
 		Attribution map[string]any `json:"attribution"`
 		GAClientID  string         `json:"gaClientId"`
 		YMClientID  string         `json:"ymClientId"`
@@ -136,6 +137,39 @@ func (s *Server) handleSubscriptionStart(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Цена плеча: /subscribe приходит из апсейла воронки с orderRef, и экран
+	// уже обещал цену подписки этого плеча. Цену из тела запроса не берём —
+	// только у оплаченного рублёвого заказа того же покупателя. Проверка ДО
+	// оформления: иначе человек без оплаченного заказа получил бы подписку по
+	// общей цене или брошенную pending-запись.
+	var order *store.Order
+	if ref := strings.TrimSpace(body.OrderRef); ref != "" {
+		orderID, ok := s.resolveOrderID(ctx, ref)
+		if !ok {
+			writeJSON(w, 404, map[string]string{"error": "not_found"})
+			return
+		}
+		o, err := store.GetOrder(ctx, s.DB, orderID)
+		if err != nil {
+			writeJSON(w, 404, map[string]string{"error": "not_found"})
+			return
+		}
+		if o.PaymentStatus != store.PaymentPaid {
+			writeJSON(w, 409, map[string]string{"error": "order_not_paid"})
+			return
+		}
+		if s.orderCurrency(o) != CurrencyRUB {
+			writeJSON(w, 409, map[string]string{"error": "order_currency_not_supported"})
+			return
+		}
+		orderEmail, _ := orderCustomer(o)
+		if !strings.EqualFold(strings.TrimSpace(orderEmail), email) {
+			writeJSON(w, 409, map[string]string{"error": "order_email_mismatch"})
+			return
+		}
+		order = &o
+	}
+
 	sub, err := store.UpsertPendingSubscription(ctx, s.DB, email, body.Name)
 	if err == store.ErrSubscriptionActive {
 		writeJSON(w, 409, map[string]string{"error": "already_active"})
@@ -145,6 +179,33 @@ func (s *Server) handleSubscriptionStart(w http.ResponseWriter, r *http.Request)
 		log.Printf("[sub] start email=%s: upsert err=%v", email, err)
 		writeJSON(w, 500, map[string]string{"error": "db"})
 		return
+	}
+	if order != nil {
+		// Атрибуция и идентификаторы браузера заказа: оплата подписки уходит в
+		// те же серверные конверсии, что и оплата песни.
+		if body.GAClientID == "" && order.GAClientID.Valid {
+			body.GAClientID = order.GAClientID.String
+		}
+		if body.YMClientID == "" && order.YMClientID.Valid {
+			body.YMClientID = order.YMClientID.String
+		}
+		if len(body.Attribution) == 0 && order.AttributionJSON.Valid {
+			_ = json.Unmarshal([]byte(order.AttributionJSON.String), &body.Attribution)
+		}
+		// Цена продлений — из ценового плеча заказа (500 ₽ у 500-750s). Для
+		// рублей берём arm.RubSubscriptionPrice через armSubscriptionPriceRub:
+		// arm.SubscriptionPrice — доллары ($15), и подписка ушла бы по 15 ₽.
+		if order.FlowVariant.Valid {
+			if arm, ok := flowArms[order.FlowVariant.String]; ok {
+				price := s.armSubscriptionPriceRub(ctx, arm)
+				if price > 0 {
+					if err := store.SetSubscriptionPrice(ctx, s.DB, sub.ID, price); err != nil {
+						log.Printf("[sub] start sub=%s: set price err=%v", sub.ID, err)
+					}
+					sub.PriceRub = price // createSubscriptionPayment читает subPrice(sub)
+				}
+			}
+		}
 	}
 	s.marketingContact(email, nil)
 
@@ -184,7 +245,10 @@ func (s *Server) handleSubscriptionStart(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	returnURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/subscribe/return?sid=" + sub.ID
+	// Возврат — сразу на русскую страницу: инлайн-редирект в index.html уводит
+	// беспрефиксные адреса на /en/... при куке mezmo_lang=en, а EN-версии
+	// подписки нет — человек получал бы 404.
+	returnURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/ru/subscribe/return?sid=" + sub.ID
 	result, err := s.createSubscriptionPayment(sub, email, mode, returnURL, nil)
 	if err != nil {
 		log.Printf("[sub] start sub=%s: create payment err=%v", sub.ID, err)
@@ -927,12 +991,15 @@ func (s *Server) rememberSubscriptionPayment(ctx context.Context, subID, payment
 
 // --- Письма ---
 
+// Ссылки подписки ведут сразу на /ru/...: страницы подписки есть только на
+// русском, а инлайн-редирект в frontend/index.html отправляет беспрефиксный
+// адрес на /en/... при куке mezmo_lang=en — это 404.
 func (s *Server) subAccountURL() string {
-	return strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/account"
+	return strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/ru/account"
 }
 
 func (s *Server) subCancelURL(sub store.Subscription) string {
-	return strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/subscription/cancel?t=" + sub.CancelToken
+	return strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/ru/subscription/cancel?t=" + sub.CancelToken
 }
 
 // sendSubscriptionMail — письмо подписчику. errEmailDisabled означает, что
@@ -970,7 +1037,7 @@ func fmtRuDate(rfc3339 string) string {
 }
 
 func (s *Server) sendSubscriptionGiftEmail(sub store.Subscription) error {
-	renewURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/subscribe?sid=" + url.QueryEscape(sub.ID) + "&email=" + url.QueryEscape(sub.Email)
+	renewURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/ru/subscribe?sid=" + url.QueryEscape(sub.ID) + "&email=" + url.QueryEscape(sub.Email)
 	return s.sendSubscriptionMail(emailSubGift, sub, "Дарим вам месяц безлимита песен",
 		"Здравствуйте!\n\nСпасибо за заказ песни. Мы дарим вам месяц безлимита: до "+fmtRuDate(sub.AccessUntil.String)+
 			" можно создавать сколько угодно песен без доплат. Карту мы не привязывали — списаний не будет.\n\n"+
@@ -1038,7 +1105,7 @@ func (s *Server) sendSubscriptionChargeFailedEmail(sub store.Subscription) {
 }
 
 func (s *Server) sendSubscriptionExpiredEmail(sub store.Subscription) {
-	subscribeURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/subscribe"
+	subscribeURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/ru/subscribe"
 	s.sendSubscriptionMail(emailSubExpired, sub, "Подписка завершена",
 		fmt.Sprintf(`Продлить подписку не получилось, и она завершена. Все созданные песни
 остаются доступны по ссылкам из писем.

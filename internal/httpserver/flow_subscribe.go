@@ -102,12 +102,16 @@ func (s *Server) handleOrderSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	// Идентификаторы браузера заказа — для серверных конверсий по платежу подписки.
 	_ = store.SetSubscriptionClientIDs(ctx, s.DB, sub.ID, o.GAClientID.String, o.YMClientID.String)
-	// Цена продлений — из плеча заказа (variant1-750 → 750 ₽/мес): экран апсейла
-	// обещает именно её, без этого подписка уходила по общей цене.
+	// Цена продлений — из плеча заказа (500-750s → 500 ₽/мес): экран апсейла
+	// обещает именно её, без этого подписка уходила по общей цене. Для рублей
+	// берём armSubscriptionPriceRub: arm.SubscriptionPrice — доллары ($15), и
+	// кабинет показывал бы 15 ₽/мес вместо 500 ₽.
 	if o.FlowVariant.Valid {
-		if arm, ok := flowArms[o.FlowVariant.String]; ok && arm.SubscriptionPrice > 0 {
-			if err := store.SetSubscriptionPrice(ctx, s.DB, sub.ID, arm.SubscriptionPrice); err != nil {
-				log.Printf("[sub] from-order order=%s sub=%s: set price err=%v", id, sub.ID, err)
+		if arm, ok := flowArms[o.FlowVariant.String]; ok {
+			if price := s.armSubscriptionPriceRub(ctx, arm); price > 0 {
+				if err := store.SetSubscriptionPrice(ctx, s.DB, sub.ID, price); err != nil {
+					log.Printf("[sub] from-order order=%s sub=%s: set price err=%v", id, sub.ID, err)
+				}
 			}
 		}
 	}

@@ -823,7 +823,14 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
       const msg = e instanceof Error ? e.message : ''
       track(stepId, stepIndex, 'error', { code: msg })
       if (msg === 'no_saved_method') {
-        navigate(localePath(`/subscribe?email=${encodeURIComponent(form.email.trim())}`))
+        // orderRef обязателен: /subscribe зафиксирует цену плеча (500 ₽) вместо общей 990 ₽.
+        // 'ru' — страницы подписки есть только на русском, на /en localePath дал бы /en/subscribe.
+        navigate(
+          localePath(
+            `/subscribe?email=${encodeURIComponent(form.email.trim())}&order=${encodeURIComponent(order.orderId)}`,
+            'ru',
+          ),
+        )
         return
       }
       if (msg === 'already_active') {
