@@ -246,7 +246,14 @@ func UpsertPendingSubscription(ctx context.Context, db *sql.DB, email, name stri
 	existing, err := GetSubscriptionByEmail(ctx, db, email)
 	switch {
 	case err == nil:
-		if existing.HasAccess(now) && existing.Status != SubCanceled {
+		// Второй раз продаём только по-настоящему живую подписку: active и
+		// past_due (списание не прошло, но доступ ещё идёт) — это уже куплено.
+		// pending и canceled с живым access_until — не подписка, а оформление:
+		// canceled означает «списаний больше нет, период доживает», pending —
+		// «оформление начато». Иначе повторный /api/subscription/start (фолбэк
+		// виджета, повторная отправка формы) упирался бы в already_active:
+		// первый заход сам переводит строку в pending, сохраняя access_until.
+		if existing.HasAccess(now) && (existing.Status == SubActive || existing.Status == SubPastDue) {
 			return Subscription{}, ErrSubscriptionActive
 		}
 		// Неактивную строку возвращаем в pending: и фиксация цены

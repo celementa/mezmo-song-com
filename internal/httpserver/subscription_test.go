@@ -767,3 +767,59 @@ func TestOrderSubscribeUsesRubArmPriceOnCanceledRow(t *testing.T) {
 			sub.Status, sub.PriceRub, sub.YooMethodID.String)
 	}
 }
+
+// Повторный старт оформления на ОТМЕНЁННОЙ подписке с ещё живым оплаченным
+// периодом. Фронт зовёт /api/subscription/start дважды (фолбэк виджета на
+// redirect, повторная отправка формы после payment_gateway), а первый заход сам
+// переводит строку в pending, сохраняя access_until. Гейт upsert не должен
+// считать такую строку уже купленной подпиской: на main второй заход проходил,
+// после сброса статуса он отвечал 409 already_active.
+func TestSubscriptionStartRepeatOnCanceledLiveAccess(t *testing.T) {
+	var got map[string]any
+	created := 0
+	s := refundTestServer(t)
+	captureYooCreate(t, &got, &created)
+
+	canceled := seedCanceledSub(t, s, "live@b.c", 500, 5*24*time.Hour)
+	if !canceled.HasAccess(time.Now().UTC()) {
+		t.Fatal("подготовка: у отменённой подписки должен быть живой оплаченный период")
+	}
+
+	start := func(mode string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		s.handleSubscriptionStart(rec, httptest.NewRequest("POST", "/api/subscription/start",
+			bytes.NewReader([]byte(fmt.Sprintf(`{"email":"live@b.c","mode":%q}`, mode)))))
+		return rec
+	}
+
+	if rec := start("embedded"); rec.Code != 200 {
+		t.Fatalf("first start: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	// Второй заход — фолбэк виджета: 200 и новый платёж, а не already_active.
+	rec := start("redirect")
+	if rec.Code != 200 || strings.Contains(rec.Body.String(), "already_active") {
+		t.Fatalf("second start: code=%d body=%s, want 200 без already_active", rec.Code, rec.Body.String())
+	}
+	if created != 2 {
+		t.Fatalf("платежей создано %d, want 2 (каждая попытка заводит свой платёж)", created)
+	}
+	sub, err := store.GetSubscription(t.Context(), s.DB, canceled.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.Status != store.SubPending || sub.PriceRub != 990 {
+		t.Fatalf("status=%s price_rub=%d, want pending/990", sub.Status, sub.PriceRub)
+	}
+	if !sub.HasAccess(time.Now().UTC()) {
+		t.Fatal("оплаченный период отменённой подписки потерялся")
+	}
+
+	// Живая подписка по-прежнему не продаётся второй раз.
+	activeSubForJobs(t, s, "active@b.c", "pm_active", 24*time.Hour)
+	rec = httptest.NewRecorder()
+	s.handleSubscriptionStart(rec, httptest.NewRequest("POST", "/api/subscription/start",
+		bytes.NewReader([]byte(`{"email":"active@b.c","mode":"embedded"}`))))
+	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "already_active") {
+		t.Fatalf("active sub: code=%d body=%s, want 409 already_active", rec.Code, rec.Body.String())
+	}
+}
