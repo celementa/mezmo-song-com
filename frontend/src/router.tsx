@@ -30,6 +30,14 @@ const ContactPage = lazy(() => import('@/routes/ContactPage').then((m) => ({ def
 const PayStripeRoute = lazy(() => import('@/routes/PayStripeRoute').then((m) => ({ default: m.PayStripeRoute })))
 const PayYookassaRoute = lazy(() => import('@/routes/PayYookassaRoute').then((m) => ({ default: m.PayYookassaRoute })))
 const PayUnitpayRoute = lazy(() => import('@/routes/PayUnitpayRoute').then((m) => ({ default: m.PayUnitpayRoute })))
+// Подписка: страницы только русские (решение от 2026-11-13), подписка в общий
+// двуязычный набор contentPages не входит — см. subscriptionPages ниже.
+const SubscribeRoute = lazy(() => import('@/routes/SubscribeRoute').then((m) => ({ default: m.SubscribeRoute })))
+const SubscribeReturnRoute = lazy(() => import('@/routes/SubscribeReturnRoute').then((m) => ({ default: m.SubscribeReturnRoute })))
+const AccountRoute = lazy(() => import('@/routes/AccountRoute').then((m) => ({ default: m.AccountRoute })))
+const AccountNewRoute = lazy(() => import('@/routes/AccountNewRoute').then((m) => ({ default: m.AccountNewRoute })))
+const SubscriptionCancelRoute = lazy(() => import('@/routes/SubscriptionCancelRoute').then((m) => ({ default: m.SubscriptionCancelRoute })))
+const SubscriptionOfferRoute = lazy(() => import('@/routes/SubscriptionOfferRoute').then((m) => ({ default: m.SubscriptionOfferRoute })))
 
 function LazyFallback() {
   return (
@@ -154,6 +162,18 @@ const localizedPages: RouteObject[] = (['ru', 'en'] as const).flatMap((lang) => 
   ...contentPages.map((page) => ({ ...page, path: `/${lang}${page.path}` })),
 ])
 
+// RU-страницы подписки. В contentPages их не кладём: localizedPages размножил бы
+// их на /en, а подписка — только русская. Адреса работают и без префикса, и под
+// /ru; /en/subscribe остаётся 404 (маршрута нет).
+const subscriptionPages: RouteObject[] = [
+  { path: '/subscribe', element: <Suspense fallback={<LazyFallback />}><SubscribeRoute /></Suspense> },
+  { path: '/subscribe/return', element: <Suspense fallback={<LazyFallback />}><SubscribeReturnRoute /></Suspense> },
+  { path: '/account', element: <Suspense fallback={<LazyFallback />}><AccountRoute /></Suspense> },
+  { path: '/account/new', element: <Suspense fallback={<LazyFallback />}><AccountNewRoute /></Suspense> },
+  { path: '/subscription/cancel', element: <Suspense fallback={<LazyFallback />}><SubscriptionCancelRoute /></Suspense> },
+  { path: '/subscription-offer', element: <Suspense fallback={<LazyFallback />}><SubscriptionOfferRoute /></Suspense> },
+]
+
 export const router = createBrowserRouter([
   {
     element: <PublicRoot />,
@@ -161,6 +181,8 @@ export const router = createBrowserRouter([
     children: [
       { path: '/', element: <RootRedirect /> },
       ...localizedPages,
+      ...subscriptionPages,
+      ...subscriptionPages.map((p) => ({ ...p, path: `/ru${p.path}` })),
       // Старые ссылки без языка продолжают открываться: их уже разослали в
       // письмах и кампаниях. Новые ссылки всегда строятся с /ru или /en.
       ...contentPages,
