@@ -7,3 +7,4 @@ packages/shared/dist/
 /data/*
 !/data/prompts/
 /bin/
+.orchestrator/
