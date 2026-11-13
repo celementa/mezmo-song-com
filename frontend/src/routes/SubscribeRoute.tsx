@@ -151,14 +151,19 @@ export function SubscribeRoute() {
     [email, name, orderRef],
   )
 
+  // Виджет умеет звать error_callback и fail одним тиком — второй start завёл
+  // бы второй платёж, поэтому фолбэк ровно один на одну попытку оформления.
+  const fallbackStarted = useRef(false)
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
+    // Новая попытка — новый фолбэк. Без сброса «фолбэк уже был» переживал бы
+    // неудачный редирект: виджет, упав во второй раз, оставил бы пустую панель
+    // без ошибки и без ухода на страницу ЮKassa.
+    fallbackStarted.current = false
     void start('embedded')
   }
 
-  // Виджет умеет звать error_callback и fail одним тиком — второй start завёл
-  // бы второй платёж, поэтому фолбэк ровно один.
-  const fallbackStarted = useRef(false)
   /** Виджет не поднялся — тот же платёж редиректом на страницу ЮKassa. */
   const widgetFail = useCallback(() => {
     if (fallbackStarted.current) return
