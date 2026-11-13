@@ -12,9 +12,13 @@ import { localePath, useTr } from '@/lib/lang'
  * Легаси-формы, на которую mezmo.ru откатывается при недоступном
  * /api/public/flow, у .com нет: без сервера заказ не создать, поэтому человек
  * видит просьбу обновить страницу.
+ *
+ * `subscriberMode` — вход из кабинета подписки («Новая песня»): плечо A/B-теста
+ * и адресная метка `?arm` здесь не нужны, человек пришёл из кабинета, а не из
+ * рекламы, и редирект на движок /create увёл бы его в обычную воронку с оплатой.
  */
-export function FlowEntry() {
-  const state = useFlowConfig()
+export function FlowEntry({ subscriberMode = false }: { subscriberMode?: boolean }) {
+  const state = useFlowConfig({ trackAssignment: !subscriberMode })
   const { pathname, search, hash } = useLocation()
   const navigate = useNavigate()
   const tr = useTr()
@@ -28,7 +32,7 @@ export function FlowEntry() {
   // — в GA и Метрике всплывали адреса вида ?arm=v1_price, которых нет ни в
   // одной кампании.
   const armName =
-    state.status === 'ready' && !state.config.route
+    state.status === 'ready' && !state.config.route && !subscriberMode
       ? state.config.armName || state.config.flowVariant
       : null
   useEffect(() => {
@@ -70,7 +74,7 @@ export function FlowEntry() {
   // Плечи варианта 2 живут на движке /create — сервер присылает их путь.
   // ?v закрепится там через variant.ts, так что человек останется в своём
   // варианте и при прямом возврате на /create.
-  if (state.config.route) {
+  if (state.config.route && !subscriberMode) {
     // route приходит как "/create?v=2": ?v — часть пути, а рекламные ?arm/UTM
     // должны доехать до воронки, иначе тест теряет плечо и источник.
     const [routePath, routeQuery = ''] = state.config.route.split('?')
@@ -82,5 +86,11 @@ export function FlowEntry() {
     return <Navigate to={{ pathname: localePath(routePath), search: query ? `?${query}` : '', hash }} replace />
   }
 
-  return <FlowRoute config={state.config} sessionId={state.sessionId} />
+  return (
+    <FlowRoute
+      config={state.config}
+      sessionId={state.sessionId}
+      subscriberMode={subscriberMode}
+    />
+  )
 }

@@ -37,6 +37,14 @@ import type { PaymentMode, PaymentStart } from '@/features/payment/UnitPayChecko
 /** Шаги, которые рисует этот компонент. Остальные из config.steps — чужие. */
 const OWNED_STEPS = ['recipient', 'occasion', 'email', 'emotion', 'story', 'generating', 'preview', 'paymethod', 'speedup', 'compare', 'payment']
 
+/**
+ * Режим подписчика (кабинет, кнопка «Новая песня»): анкета без выбора ветки,
+ * оплаты и превью — песня создаётся сразу по подписке. Состав шагов здесь
+ * фиксированный: серверный набор шагов описывает A/B-тесты воронки продаж, а в
+ * этом режиме продавать нечего.
+ */
+const SUBSCRIBER_STEPS = ['recipient', 'occasion', 'email', 'emotion', 'story']
+
 // Стрелку к подписи дорисовывает StepShell.
 const NEXT_LABEL: Record<string, [string, string]> = {
   recipient: ['Далее', 'Next'],
@@ -66,7 +74,15 @@ type PaymentChoice = {
   subscriptionAmount: number
 }
 
-export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId: string }) {
+export function FlowRoute({
+  config,
+  sessionId,
+  subscriberMode = false,
+}: {
+  config: FlowConfig
+  sessionId: string
+  subscriberMode?: boolean
+}) {
   const navigate = useNavigate()
   const { pathname, search } = useLocation()
   const tr = useTr()
@@ -83,14 +99,20 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
   // заказа).
   const [resumeRef] = useState(() => new URLSearchParams(search).get('order'))
   const [draft] = useState(() => {
+    // Подписчику черновик из этого браузера не нужен: анкета начинается с
+    // чистого листа, а подмешивание чужой анкеты выдало бы её ответы за его.
+    if (subscriberMode) return null
     const d = loadFlowDraft(config.flowVariant)
     if (resumeRef && d?.orderRef !== resumeRef) return null
     return d?.paid && !fromHistory ? null : d
   })
-  // Оплаченный черновик, не восстановленный выше, больше не нужен.
+  // Оплаченный черновик, не восстановленный выше, больше не нужен. В режиме
+  // подписчика черновик не читается, но и не стирается: он принадлежит
+  // обычной воронке, куда человек может вернуться.
   useEffect(() => {
-    if (!draft) clearFlowDraft()
-  }, [draft])
+    if (subscriberMode || draft) return
+    clearFlowDraft()
+  }, [subscriberMode, draft])
   const [answers, setAnswers] = useState<FlowAnswers>(draft?.answers ?? EMPTY_ANSWERS)
   const [stepIndex, setStepIndex] = useState(() => stepFromSearch(search) ?? draft?.stepIndex ?? 0)
   const [orderRef, setOrderRef] = useState<string | null>(draft?.orderRef ?? null)
@@ -113,9 +135,14 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
   // выбирал бы план, который нельзя купить. До выбора ветки шаг остаётся —
   // убираем его, когда провайдер уже известен.
   const branchSellsSubscription = paymentChoice ? canSellSubscription(paymentChoice.provider) : true
-  const ownSteps = config.steps.filter(
-    (step) => OWNED_STEPS.includes(step) && (step !== 'compare' || branchSellsSubscription),
-  )
+  // В режиме подписчика шаги фиксированы и все свои: серверный состав шагов и
+  // ценовое плечо относятся к воронке продаж, которой здесь нет.
+  const steps = subscriberMode ? SUBSCRIBER_STEPS : config.steps
+  const ownSteps = subscriberMode
+    ? [...SUBSCRIBER_STEPS]
+    : config.steps.filter(
+        (step) => OWNED_STEPS.includes(step) && (step !== 'compare' || branchSellsSubscription),
+      )
   const lastStep = ownSteps.length - 1
   const paymentIdx = ownSteps.indexOf('payment')
   const current = ownSteps[Math.min(stepIndex, lastStep)] ?? 'recipient'
@@ -158,7 +185,7 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
   // ходило бы по кругу. Оплачен и пришли по истории — встаём не дальше шага
   // перед оплатой: ответы видно, «Далее» вернёт на страницу заказа. Оплачен и
   // заход новый — это новая песня: черновик стирается, анкета с начала.
-  const [checkingPaid, setCheckingPaid] = useState(Boolean(draft?.orderRef))
+  const [checkingPaid, setCheckingPaid] = useState(() => !subscriberMode && Boolean(draft?.orderRef))
   const draftOrderRef = draft?.orderRef ?? null
   useEffect(() => {
     if (!checkingPaid || !draftOrderRef) return
@@ -229,7 +256,9 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
   // Восстановление по ref: ответы с сервера, шаг — первый незаполненный после
   // email. Заказ другого плеча, оплаченный или уже в генерации восстановить
   // нельзя: оплаченный ведём на страницу заказа, остальное — анкета с начала.
-  const [resuming, setResuming] = useState(Boolean(resumeRef) && !draft)
+  // Режиму подписчика это не нужно: ссылку «продолжить оформление» шлют из
+  // обычной воронки, и `?order=` у него не появится.
+  const [resuming, setResuming] = useState(() => !subscriberMode && Boolean(resumeRef) && !draft)
   useEffect(() => {
     if (!resuming || !resumeRef) return
     let alive = true
@@ -274,31 +303,36 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
   }, [resuming, resumeRef, config.flowVariant, setStep, navigate])
 
   // Черновик пишется при каждом изменении: ответы, заказ, шаг, что оплачиваем.
+  // В режиме подписчика не пишется вовсе — иначе анкета кабинета подменила бы
+  // черновик обычной воронки того же браузера.
   useEffect(() => {
-    if (checkingPaid || resuming) return
+    if (subscriberMode || checkingPaid || resuming) return
     saveFlowDraft({ flowVariant: config.flowVariant, answers, orderRef, stepIndex, payVia, paid: draft?.paid })
-  }, [checkingPaid, resuming, config.flowVariant, answers, orderRef, stepIndex, payVia, draft?.paid])
+  }, [subscriberMode, checkingPaid, resuming, config.flowVariant, answers, orderRef, stepIndex, payVia, draft?.paid])
 
   // Номер шага — из полного списка, а не из своего: покупатель видит «шаг 3 из
   // 13», где 13 включает оплату и экраны после неё.
-  const globalStep = config.steps.indexOf(current) + 1
+  const globalStep = steps.indexOf(current) + 1
 
   // Показ шага уходит на сервер: из этого дашборд строит «где отпадают люди».
   // Флоу помечается как variant1 — это воронка /config, а не движок /create.
+  // В режиме подписчика шаг не отправляем: это не воронка продаж, и её метрики
+  // по плечам он бы только испортил.
   useEffect(() => {
-    reportFlowStep('variant1', current, config.steps.indexOf(current), config.flowVariant)
-  }, [current, config.steps, config.flowVariant])
+    if (subscriberMode) return
+    reportFlowStep('variant1', current, steps.indexOf(current), config.flowVariant)
+  }, [subscriberMode, current, steps, config.flowVariant])
 
   // Существующая цель GTM «дошёл до выбора стиля» (см. ANALYTICS.md §3): в новом
   // флоу этот шаг четвёртый, но событие обязано остаться тем же — иначе триггер
   // и цель Метрики перестанут срабатывать, а воронка разойдётся с легаси-плечом.
   const styleStepTracked = useRef(false)
   useEffect(() => {
-    if (current !== 'emotion' || styleStepTracked.current) return
+    if (subscriberMode || current !== 'emotion' || styleStepTracked.current) return
     styleStepTracked.current = true
     const dataLayer = ((window as unknown as { dataLayer?: Record<string, unknown>[] }).dataLayer ??= [])
     dataLayer.push({ event: 'reach_style_step', flow_variant: config.flowVariant, language: getLang() })
-  }, [current, config.flowVariant])
+  }, [subscriberMode, current, config.flowVariant])
 
   const patch = useCallback((fields: Partial<FlowAnswers>) => {
     setAnswers((prev) => ({ ...prev, ...fields }))
@@ -405,6 +439,30 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
     return res.orderId
   }, [answers, sessionId, config.flowVariant, lang])
 
+  /**
+   * Песня по подписке: сервер сам делает заказ оплаченным (base_price=0, метка
+   * SUBSCRIPTION) и запускает генерацию, поэтому ни ветки, ни оплаты, ни превью
+   * здесь нет. Email в теле нужен только анкете — сервер заменит его на адрес
+   * подписки, куда и уйдёт готовый трек.
+   */
+  const createSubscriptionOrder = useCallback(async () => {
+    const attribution = getAttribution()
+    const res = await apiPost<{ orderId: string }>('/api/subscription/orders/draft', {
+      email: answers.email.trim(),
+      recipientName: answers.recipientName.trim(),
+      yourName: answers.recipientName.trim(),
+      occasion: answerText(answers.occasion, lang),
+      relationship: answerText(answers.relationship, lang),
+      ...(answers.recipientGender ? { recipientGender: answers.recipientGender } : {}),
+      emotion: answerText(answers.emotion, lang),
+      musicPreferences: { genre: answersGenre(answers), language: 'Russian' },
+      story: answers.story.trim(),
+      whatsappNumber: answers.phone.trim() || null,
+      ...(attribution ? { attribution } : {}),
+    })
+    navigate(localePath(`/order/${encodeURIComponent(res.orderId)}`, 'ru'))
+  }, [answers, lang, navigate])
+
   const validate = useCallback((): string | null => {
     if (current === 'recipient') {
       if (!answers.relationship) return tr('Выберите, кому дарим песню.', 'Choose who the song is for.')
@@ -421,7 +479,56 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
     return null
   }, [current, answers, tr])
 
+  /**
+   * Один заказ на нажатие: «Создать песню» дважды в один тик иначе завёл бы два
+   * оплаченных нулём заказа — два слота суточного лимита и две генерации.
+   */
+  const creatingRef = useRef(false)
+
   const handleNext = useCallback(async () => {
+    if (subscriberMode) {
+      // Промежуточные шаги ничего не пишут на сервер: заказ создаётся один раз,
+      // на последнем шаге, уже с готовой анкетой целиком.
+      const subscriberInvalid = validate()
+      if (subscriberInvalid) {
+        setError(subscriberInvalid)
+        return
+      }
+      if (current === 'story') {
+        if (creatingRef.current) return
+        creatingRef.current = true
+        setBusy(true)
+        setError(null)
+        try {
+          // Ошибку разбираем по коду ответа: исчерпанный суточный лимит — это
+          // не сбой, а понятное человеку ограничение, а unauthorized — кончившаяся
+          // сессия подписки, её место в кабинете.
+          await createSubscriptionOrder()
+        } catch (err) {
+          const code = err instanceof Error ? err.message : ''
+          if (code === 'unauthorized') {
+            // Сессия подписки кончилась (кука истекла, подписка отменена):
+            // вводить email заново незачем — вход живёт в кабинете.
+            navigate(localePath('/account', 'ru'), { replace: true })
+          } else if (code === 'daily_limit_reached') {
+            setError(
+              tr(
+                'Суточный лимит песен по подписке исчерпан — возвращайтесь завтра',
+                'Daily limit of subscription songs reached — come back tomorrow',
+              ),
+            )
+          } else {
+            setError(tr('Не получилось создать песню. Попробуйте ещё раз.', "Couldn't create the song. Please try again."))
+          }
+        } finally {
+          creatingRef.current = false
+          setBusy(false)
+        }
+        return
+      }
+      advance(null)
+      return
+    }
     const invalid = validate()
     if (invalid) {
       setError(invalid)
@@ -449,7 +556,19 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
     } finally {
       setBusy(false)
     }
-  }, [validate, current, orderRef, createOrder, answers, advance, lang, tr])
+  }, [
+    subscriberMode,
+    validate,
+    current,
+    createSubscriptionOrder,
+    navigate,
+    orderRef,
+    createOrder,
+    answers,
+    advance,
+    lang,
+    tr,
+  ])
 
   const handleBack = useCallback(() => {
     setError(null)
@@ -521,7 +640,7 @@ export function FlowRoute({ config, sessionId }: { config: FlowConfig; sessionId
   // покупатель видит «шаг 3 из 13», где 13 включает оплату и экраны после неё.
   const shell = {
     stepIndex: globalStep - 1,
-    stepTotal: config.steps.length,
+    stepTotal: steps.length,
     onBack: stepIndex === 0 ? () => navigate(localePath('/')) : handleBack,
     canGoBack: true,
     busy,
