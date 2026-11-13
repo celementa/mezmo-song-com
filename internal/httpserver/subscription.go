@@ -119,6 +119,7 @@ func (s *Server) handleSubscriptionStart(w http.ResponseWriter, r *http.Request)
 		Name        string         `json:"name"`
 		Mode        string         `json:"mode"`
 		OrderRef    string         `json:"orderRef"`
+		SID         string         `json:"sid"`
 		Attribution map[string]any `json:"attribution"`
 		GAClientID  string         `json:"gaClientId"`
 		YMClientID  string         `json:"ymClientId"`
@@ -170,6 +171,18 @@ func (s *Server) handleSubscriptionStart(w http.ResponseWriter, r *http.Request)
 		order = &o
 	}
 
+	// Продление по ссылке из письма (?sid=): страница показала цену именно
+	// этой подписки (см. handleSubscriptionStatus), и списание обязано
+	// совпасть с ней. sid без совпадения email — не ошибка: такой заход
+	// считаем обычным оформлением по общей цене.
+	var sidSub *store.Subscription
+	if sid := strings.TrimSpace(body.SID); sid != "" && order == nil {
+		if existing, err := store.GetSubscription(ctx, s.DB, sid); err == nil &&
+			strings.EqualFold(strings.TrimSpace(existing.Email), email) {
+			sidSub = &existing
+		}
+	}
+
 	sub, err := store.UpsertPendingSubscription(ctx, s.DB, email, body.Name)
 	if err == store.ErrSubscriptionActive {
 		writeJSON(w, 409, map[string]string{"error": "already_active"})
@@ -192,20 +205,32 @@ func (s *Server) handleSubscriptionStart(w http.ResponseWriter, r *http.Request)
 		if len(body.Attribution) == 0 && order.AttributionJSON.Valid {
 			_ = json.Unmarshal([]byte(order.AttributionJSON.String), &body.Attribution)
 		}
-		// Цена продлений — из ценового плеча заказа (500 ₽ у 500-750s). Для
-		// рублей берём arm.RubSubscriptionPrice через armSubscriptionPriceRub:
-		// arm.SubscriptionPrice — доллары ($15), и подписка ушла бы по 15 ₽.
+	}
+	// Цена, которую спишет ЮKassa, должна совпасть с ценой на странице:
+	//   orderRef — цена ценового плеча заказа (500 ₽ у 500-750s);
+	//   sid с тем же email — цена этой подписки, её и показала страница;
+	//   иначе — общая цена, чтобы прямой заход не списывал старую цену плеча.
+	// Тело запроса цену не задаёт: её определяет только то, откуда пришёл человек.
+	// Для рублей берём armSubscriptionPriceRub: arm.SubscriptionPrice — доллары
+	// ($15 у 500-750s), и подписка ушла бы по 15 ₽.
+	fixPrice := 0
+	switch {
+	case order != nil:
 		if order.FlowVariant.Valid {
 			if arm, ok := flowArms[order.FlowVariant.String]; ok {
-				price := s.armSubscriptionPriceRub(ctx, arm)
-				if price > 0 {
-					if err := store.SetSubscriptionPrice(ctx, s.DB, sub.ID, price); err != nil {
-						log.Printf("[sub] start sub=%s: set price err=%v", sub.ID, err)
-					}
-					sub.PriceRub = price // createSubscriptionPayment читает subPrice(sub)
-				}
+				fixPrice = s.armSubscriptionPriceRub(ctx, arm)
 			}
 		}
+	case sidSub != nil:
+		// Цену подписки из письма оставляем как есть: её страница и показала.
+	default:
+		fixPrice = subscriptionPriceRub
+	}
+	if fixPrice > 0 {
+		if err := store.SetSubscriptionPrice(ctx, s.DB, sub.ID, fixPrice); err != nil {
+			log.Printf("[sub] start sub=%s: set price err=%v", sub.ID, err)
+		}
+		sub.PriceRub = fixPrice // createSubscriptionPayment читает subPrice(sub)
 	}
 	s.marketingContact(email, nil)
 
@@ -390,6 +415,15 @@ func (s *Server) handleAdminSubscriptionGift(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	name, _ := jsonField(o.InputPayloadJSON, "yourName")
+	// Повторный подарок на ещё живую отменённую подписку — отказ. Проверяем ДО
+	// апсерта: неактивную строку апсерт переводит в pending, и
+	// GiftSubscriptionAccess выдал бы второй месяц поверх уже подаренного.
+	// Живую активную/просроченную по-прежнему отсекает ErrSubscriptionActive.
+	if prev, gerr := store.GetSubscriptionByEmail(ctx, s.DB, email); gerr == nil &&
+		prev.Status == store.SubCanceled && prev.HasAccess(time.Now().UTC()) {
+		writeJSON(w, 409, map[string]string{"error": "already_had_subscription", "status": prev.Status})
+		return
+	}
 	sub, err := store.UpsertPendingSubscription(ctx, s.DB, email, name)
 	if errors.Is(err, store.ErrSubscriptionActive) {
 		writeJSON(w, 409, map[string]string{"error": "already_active"})

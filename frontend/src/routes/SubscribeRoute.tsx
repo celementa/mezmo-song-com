@@ -53,6 +53,14 @@ function clientIDs(): { gaClientId?: string; ymClientId?: string } {
 function errorMessage(code: string): string {
   if (code === 'already_active') return 'У этого email уже есть активная подписка.'
   if (code === 'subscriptions_unavailable') return 'Подписка временно недоступна. Попробуйте позже.'
+  // Заход из апсейла с номером заказа: сервер отказывает, если заказ не тот.
+  // Молчаливая общая фраза здесь плоха: человеку надо знать, что поправить.
+  if (code === 'order_email_mismatch')
+    return 'Этот заказ оформлен на другой email — укажите адрес, на который пришла песня.'
+  if (code === 'order_not_paid') return 'Заказ ещё не оплачен — подписку можно оформить после его оплаты.'
+  if (code === 'order_currency_not_supported')
+    return 'Заказ оформлен в другой валюте — подписка на него не распространяется. Оформите её отдельно по общей цене.'
+  if (code === 'not_found') return 'Заказ не найден. Проверьте ссылку или оформите подписку заново.'
   // bad_json, payment_gateway, db и всё незнакомое — одна общая формулировка:
   // человеку важен следующий шаг («попробуйте ещё раз»), а не код ручки.
   return 'Не получилось начать оплату. Попробуйте ещё раз.'
@@ -128,6 +136,9 @@ export function SubscribeRoute() {
             // подписки (те же куки, что снимает /create при создании заказа).
             ...clientIDs(),
             ...(orderRef ? { orderRef } : {}),
+            // sid из письма «продлить»: у такой подписки своя цена, и сервер
+            // обязан выставить платёж именно на неё, а не на общую.
+            ...(sid ? { sid } : {}),
           },
         )
         if (res.confirmationToken && res.returnUrl && mode === 'embedded') {
@@ -148,7 +159,7 @@ export function SubscribeRoute() {
         setLoading(false)
       }
     },
-    [email, name, orderRef],
+    [email, name, orderRef, sid],
   )
 
   // Виджет умеет звать error_callback и fail одним тиком — второй start завёл

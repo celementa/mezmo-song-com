@@ -249,9 +249,21 @@ func UpsertPendingSubscription(ctx context.Context, db *sql.DB, email, name stri
 		if existing.HasAccess(now) && existing.Status != SubCanceled {
 			return Subscription{}, ErrSubscriptionActive
 		}
+		// Неактивную строку возвращаем в pending: и фиксация цены
+		// (SetSubscriptionPrice), и активация (ActivateSubscriptionWithMethod),
+		// и подарок (GiftSubscriptionAccess) работают только с pending. Без
+		// этого повторное оформление после отмены/просрочки молча оставляло
+		// статус canceled: цена не записывалась, платёж расходился с ценой в
+		// БД, и verifySubscriptionPayment отклонял его (amount_mismatch) —
+		// человек платил, а подписка не активировалась.
+		// access_until не трогаем: уже оплаченный период доживает свой срок.
 		_, err = db.ExecContext(ctx, `
-			UPDATE subscriptions SET customer_name = COALESCE(NULLIF(?, ''), customer_name), updated_at = ?
-			WHERE id = ?`, strings.TrimSpace(name), now.Format(time.RFC3339), existing.ID)
+			UPDATE subscriptions SET
+				customer_name = COALESCE(NULLIF(?, ''), customer_name),
+				status = ?, next_charge_at = NULL, yoo_payment_method_id = NULL,
+				pending_payment_id = NULL, updated_at = ?
+			WHERE id = ?`,
+			strings.TrimSpace(name), SubPending, now.Format(time.RFC3339), existing.ID)
 		if err != nil {
 			return Subscription{}, err
 		}

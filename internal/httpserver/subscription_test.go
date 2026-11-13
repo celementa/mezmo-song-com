@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"mezmo-song-com/internal/config"
+	"mezmo-song-com/internal/payment"
 	"mezmo-song-com/internal/store"
 )
 
@@ -522,8 +523,10 @@ func TestSubscriptionStartWithoutOrderUsesDefaultPrice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if subPrice(sub) != 990 || sub.PriceRub != 0 {
-		t.Fatalf("subPrice=%d price_rub=%d, want 990/0", subPrice(sub), sub.PriceRub)
+	// Цена фиксируется в БД явно: иначе прямой заход без sid на email со
+	// старой ценой плеча (500 ₽) списал бы 500, а страница показывает 990.
+	if subPrice(sub) != 990 || sub.PriceRub != 990 {
+		t.Fatalf("subPrice=%d price_rub=%d, want 990/990", subPrice(sub), sub.PriceRub)
 	}
 }
 
@@ -550,5 +553,217 @@ func TestOrderSubscribeUsesRubArmPrice(t *testing.T) {
 	}
 	if sub.Status != store.SubActive || sub.YooMethodID.String != "pm_saved_77" {
 		t.Fatalf("status=%s method=%q, want active/pm_saved_77", sub.Status, sub.YooMethodID.String)
+	}
+}
+
+// seedCanceledSub — отменённая подписка с зафиксированной ценой и заданным
+// остатком оплаченного периода (accessIn < 0 — доступ уже истёк). Это
+// состояние «человек отменил подписку и возвращается оформить её заново»:
+// строка в таблице уже есть, email уникален, и upsert переиспользует её.
+func seedCanceledSub(t *testing.T, s *Server, email string, priceRub int, accessIn time.Duration) store.Subscription {
+	t.Helper()
+	sub, err := store.UpsertPendingSubscription(t.Context(), s.DB, email, "Аня")
+	if err != nil {
+		t.Fatalf("seed sub %s: %v", email, err)
+	}
+	if _, err := s.DB.ExecContext(t.Context(), `
+		UPDATE subscriptions SET status = ?, price_rub = ?, access_until = ?, next_charge_at = NULL
+		WHERE id = ?`,
+		store.SubCanceled, priceRub,
+		time.Now().UTC().Add(accessIn).Format(time.RFC3339), sub.ID); err != nil {
+		t.Fatalf("seed canceled %s: %v", email, err)
+	}
+	fresh, err := store.GetSubscription(t.Context(), s.DB, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fresh
+}
+
+// Повторное оформление на email с ОТМЕНЁННОЙ подпиской + orderRef ценового
+// плеча. Регресс из T-009 test-1: строка оставалась canceled, SetSubscriptionPrice
+// молча менял 0 строк, платёж 500 ₽ расходился с price_rub=990 в БД и
+// verifySubscriptionPayment отклонял его (amount_mismatch) — человек платил,
+// подписка не активировалась. Здесь проверяется весь путь до активации.
+func TestSubscriptionStartResubscribeCanceledRow(t *testing.T) {
+	var created map[string]any
+	var payments int
+	var subID, chargedAmount string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v3/payments", func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		created = payload
+		payments++
+		if amount, ok := payload["amount"].(map[string]any); ok {
+			chargedAmount, _ = amount["value"].(string)
+		}
+		if meta, ok := payload["metadata"].(map[string]any); ok {
+			subID, _ = meta["subscription_id"].(string)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":     "pay_resub_1",
+			"status": "pending",
+			"confirmation": map[string]string{
+				"type":             "redirect",
+				"confirmation_url": "https://yoomoney.test/checkout/pay_resub_1",
+			},
+		})
+	})
+	mux.HandleFunc("GET /v3/payments/{id}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(subPaymentJSON("pay_resub_1", "succeeded", true, chargedAmount, subID, store.SubFlowFirst, "pm_77"))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	setAPIBaseURL(t, srv.URL)
+
+	s := refundTestServer(t)
+	s.Config.WebhookSecret = "test-secret"
+
+	// Отменена, но оплаченный период ещё идёт — он не должен потеряться.
+	canceled := seedCanceledSub(t, s, "re@b.c", 990, 5*24*time.Hour)
+	orderID := seedArmOrder(t, s, "ord_resub", "re@b.c", ArmCom500750s, "")
+	ref := publicOrderRef(s.Config.WebhookSecret, orderID)
+
+	rec := httptest.NewRecorder()
+	s.handleSubscriptionStart(rec, httptest.NewRequest("POST", "/api/subscription/start",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"email":"re@b.c","mode":"redirect","orderRef":%q}`, ref)))))
+	if rec.Code != 200 {
+		t.Fatalf("start: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if payments != 1 {
+		t.Fatalf("платежей создано %d, want 1", payments)
+	}
+	amount, _ := created["amount"].(map[string]any)
+	if amount["value"] != "500.00" {
+		t.Fatalf("платёж на %v, want 500.00 (цена плеча)", amount["value"])
+	}
+
+	// Та же строка (email уникален), но снова pending — иначе цена и активация
+	// не запишутся.
+	sub, err := store.GetSubscription(t.Context(), s.DB, canceled.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.Status != store.SubPending {
+		t.Fatalf("status=%s, want pending", sub.Status)
+	}
+	if sub.PriceRub != 500 {
+		t.Fatalf("price_rub=%d, want 500 — цена должна быть в БД до платежа", sub.PriceRub)
+	}
+	if sub.AccessUntil.String != canceled.AccessUntil.String || !sub.HasAccess(time.Now().UTC()) {
+		t.Fatalf("access_until=%s, want сохранить %s", sub.AccessUntil.String, canceled.AccessUntil.String)
+	}
+
+	// Главное: платёж сверяется с ценой из БД и зачитывается.
+	if reason := verifySubscriptionPayment(payment.Payment{
+		ID: "pay_resub_1", Status: "succeeded", Paid: true,
+		Amount: "500.00", Currency: "RUB",
+		Metadata: map[string]string{"subscription_id": sub.ID, "flow": store.SubFlowFirst},
+	}, sub.ID, "pay_resub_1", subPrice(sub)); reason != "" {
+		t.Fatalf("verifySubscriptionPayment = %q, want пусто (регресс amount_mismatch)", reason)
+	}
+	if rec := postWebhook(s, subWebhookBody("payment.succeeded", "pay_resub_1", sub.ID)); rec.Code != 200 ||
+		!strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Fatalf("webhook: code=%d body=%s, want ok:true", rec.Code, rec.Body.String())
+	}
+	active, err := store.GetSubscription(t.Context(), s.DB, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active.Status != store.SubActive || active.PriceRub != 500 {
+		t.Fatalf("после вебхука status=%s price_rub=%d, want active/500", active.Status, active.PriceRub)
+	}
+}
+
+// Отменённая строка без orderRef и без sid — общая цена: страница без sid
+// показывает 990, и списание обязано совпасть с ней, а не со старой ценой
+// плеча (500 ₽), оставшейся в строке.
+func TestSubscriptionStartCanceledRowWithoutOrderUsesDefaultPrice(t *testing.T) {
+	var got map[string]any
+	created := 0
+	s := refundTestServer(t)
+	captureYooCreate(t, &got, &created)
+
+	canceled := seedCanceledSub(t, s, "old@b.c", 500, -24*time.Hour)
+
+	rec := httptest.NewRecorder()
+	s.handleSubscriptionStart(rec, httptest.NewRequest("POST", "/api/subscription/start",
+		bytes.NewReader([]byte(`{"email":"old@b.c","mode":"redirect"}`))))
+	if rec.Code != 200 {
+		t.Fatalf("start: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	amount, _ := got["amount"].(map[string]any)
+	if amount["value"] != "990.00" {
+		t.Fatalf("платёж на %v, want 990.00 (общая цена на странице без sid)", amount["value"])
+	}
+	sub, err := store.GetSubscription(t.Context(), s.DB, canceled.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.PriceRub != 990 || subPrice(sub) != 990 {
+		t.Fatalf("price_rub=%d subPrice=%d, want 990/990", sub.PriceRub, subPrice(sub))
+	}
+}
+
+// Отменённая строка + валидный sid из письма «продлить» — цена подписки
+// сохраняется: страница показала именно её (handleSubscriptionStatus), и
+// списание обязано быть тем же.
+func TestSubscriptionStartKeepsSidPrice(t *testing.T) {
+	var got map[string]any
+	created := 0
+	s := refundTestServer(t)
+	captureYooCreate(t, &got, &created)
+
+	canceled := seedCanceledSub(t, s, "sid@b.c", 500, -24*time.Hour)
+
+	rec := httptest.NewRecorder()
+	s.handleSubscriptionStart(rec, httptest.NewRequest("POST", "/api/subscription/start",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"email":"sid@b.c","mode":"redirect","sid":%q}`, canceled.ID)))))
+	if rec.Code != 200 {
+		t.Fatalf("start: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	amount, _ := got["amount"].(map[string]any)
+	if amount["value"] != "500.00" {
+		t.Fatalf("платёж на %v, want 500.00 (цена из sid)", amount["value"])
+	}
+	sub, err := store.GetSubscription(t.Context(), s.DB, canceled.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.PriceRub != 500 {
+		t.Fatalf("price_rub=%d, want 500 (цену из письма не переписываем)", sub.PriceRub)
+	}
+	if sub.Status != store.SubPending {
+		t.Fatalf("status=%s, want pending", sub.Status)
+	}
+}
+
+// Активация по сохранённой карте после отмены: строка переиспользуется и
+// активируется снова, цена — рублёвая цена плеча (500 ₽). До правки upsert
+// оставлял canceled, ActivateSubscriptionWithMethod менял 0 строк и ручка
+// отвечала 409 already_active, хотя подписки не было.
+func TestOrderSubscribeUsesRubArmPriceOnCanceledRow(t *testing.T) {
+	s := refundTestServer(t)
+	canceled := seedCanceledSub(t, s, "saved2@b.c", 990, -24*time.Hour)
+	seedArmOrder(t, s, "ord_arm_resub", "saved2@b.c", ArmCom500750s, "pm_saved_88")
+
+	req := httptest.NewRequest("POST", "/api/orders/ord_arm_resub/subscribe", nil)
+	req.SetPathValue("id", "ord_arm_resub")
+	rec := httptest.NewRecorder()
+	s.handleOrderSubscribe(rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"activated":true`) {
+		t.Fatalf("subscribe: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	sub, err := store.GetSubscription(t.Context(), s.DB, canceled.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.Status != store.SubActive || sub.PriceRub != 500 || sub.YooMethodID.String != "pm_saved_88" {
+		t.Fatalf("status=%s price_rub=%d method=%q, want active/500/pm_saved_88",
+			sub.Status, sub.PriceRub, sub.YooMethodID.String)
 	}
 }
