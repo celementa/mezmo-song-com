@@ -145,6 +145,7 @@ export function FlowRoute({
       )
   const lastStep = ownSteps.length - 1
   const paymentIdx = ownSteps.indexOf('payment')
+  const paymentMethodIdx = ownSteps.indexOf('paymethod')
   const current = ownSteps[Math.min(stepIndex, lastStep)] ?? 'recipient'
 
   /** Смена шага: состояние + запись в историю браузера, чтобы «назад» вёл на предыдущий шаг. */
@@ -192,7 +193,26 @@ export function FlowRoute({
     let alive = true
     apiGet<{ paymentStatus?: string }>(`/api/public/order/${encodeURIComponent(draftOrderRef)}/status`)
       .then((st) => {
-        if (!alive || st.paymentStatus !== 'paid') return
+        if (!alive) return
+        if (st.paymentStatus !== 'paid') {
+          // ЮKassa отменяет неоплаченный платёж примерно через два часа, после
+          // чего payment-branch и initiate-payment по заказу отвечают 409:
+          // выбрать способ оплаты уже нельзя. Ответы не теряем, а мёртвый
+          // заказ выбрасываем — новый заведёт chooseBranch, когда человек
+          // подтвердит ветку на шаге оплаты.
+          if (st.paymentStatus === 'pending') return
+          setOrderRef(null)
+          setPaymentChoice(null)
+          setPayVia('order')
+          if (paymentMethodIdx >= 0 && stepRef.current > paymentMethodIdx) setStep(paymentMethodIdx, true)
+          setError(
+            tr(
+              'Прошлая оплата отменена. Выберите способ оплаты ещё раз.',
+              'The previous payment was canceled. Please choose a payment method again.',
+            ),
+          )
+          return
+        }
         if (!fromHistory) {
           clearFlowDraft()
           setAnswers(EMPTY_ANSWERS)
@@ -214,7 +234,7 @@ export function FlowRoute({
     return () => {
       alive = false
     }
-  }, [checkingPaid, draftOrderRef, fromHistory, setStep, paymentIdx, config.flowVariant, answers, orderRef, payVia])
+  }, [checkingPaid, draftOrderRef, fromHistory, setStep, paymentIdx, paymentMethodIdx, config.flowVariant, answers, orderRef, payVia, tr])
 
   // Возврат с оплаты или по ссылке из письма: ветка и валюта уже записаны в
   // заказ. Восстанавливаем их, чтобы человек попал в свою ветку, а не увидел
@@ -364,26 +384,78 @@ export function FlowRoute({
     [orderRef],
   )
 
-  /** Выбор ветки оплаты: фиксирует валюту и цену в заказе. */
+  /**
+   * Заказ создаётся на шаге email: дальше он и есть черновик.
+   *
+   * `track=false` — заказ заводится вместо отменённого (см. chooseBranch):
+   * анкету человек уже отправил, и повторный Lead исказил бы конверсию формы.
+   */
+  const createOrder = useCallback(async (track = true) => {
+    const attribution = getAttribution()
+    const gaMatch = typeof document !== 'undefined' ? document.cookie.match(/_ga=GA\d\.\d\.(\d+\.\d+)/) : null
+    const ymMatch = typeof document !== 'undefined' ? document.cookie.match(/_ym_uid=(\d+)/) : null
+
+    const res = await apiPost<{ orderId: string; flowVariant?: string; basePrice?: number }>('/api/orders/draft', {
+      sessionId,
+      email: answers.email.trim(),
+      whatsappNumber: answers.phone.trim() || null,
+      recipientName: answers.recipientName.trim(),
+      yourName: answers.recipientName.trim(),
+      occasion: answerText(answers.occasion, lang),
+      relationship: answerText(answers.relationship, lang),
+      ...(answers.recipientGender ? { recipientGender: answers.recipientGender } : {}),
+      ...(gaMatch ? { gaClientId: gaMatch[1] } : {}),
+      ...(ymMatch ? { ymClientId: ymMatch[1] } : {}),
+      ...(attribution ? { attribution } : {}),
+    })
+    setOrderRef(res.orderId)
+    if (track) {
+      trackPixelEvent('Lead', { content_name: 'AI Song', currency: 'USD', value: 0 }, `order_created:${res.orderId}`)
+      trackTikTokEvent('SubmitForm', { content_name: 'AI Song', currency: 'USD', value: 0 })
+      const dataLayer = ((window as unknown as { dataLayer?: Record<string, unknown>[] }).dataLayer ??= [])
+      dataLayer.push({ event: 'flow_order_created', flow_variant: config.flowVariant })
+    }
+    return res.orderId
+  }, [answers, sessionId, config.flowVariant, lang])
+
+  /**
+   * Выбор ветки оплаты: фиксирует валюту и цену в заказе.
+   *
+   * Заказ мог отмениться, пока человек шёл по шагам: ЮKassa закрывает
+   * неоплаченный платёж примерно через два часа, и на отменённый заказ
+   * payment-branch отвечает 409 not_pending. Тогда заводим новый черновик с
+   * теми же ответами и повторяем выбор — иначе шаг оплаты упирается в тупик.
+   */
   const chooseBranch = useCallback(
     async (branch: PaymentBranch) => {
-      if (!orderRef) {
-        setError(tr('Заказ ещё не создан. Заполните анкету заново.', 'The order is not created yet. Please fill the form again.'))
-        return
-      }
+      const save = (ref: string) =>
+        apiPost<PaymentChoice>(`/api/orders/${encodeURIComponent(ref)}/payment-branch`, { branch })
       setBusy(true)
       setError(null)
       try {
-        const res = await apiPost<PaymentChoice>(`/api/orders/${encodeURIComponent(orderRef)}/payment-branch`, { branch })
+        let ref = orderRef
+        let res: PaymentChoice | null = null
+        if (ref) {
+          try {
+            res = await save(ref)
+          } catch (err) {
+            // 409 not_pending — заказ отменён; ниже заведём вместо него новый.
+            if (!(err instanceof Error) || err.message !== 'not_pending') throw err
+          }
+        }
+        if (!res) {
+          ref = await createOrder(false)
+          res = await save(ref)
+        }
         setPaymentChoice(res)
-        advance(orderRef)
+        advance(ref)
       } catch {
         setError(tr('Не получилось сохранить способ оплаты. Попробуйте ещё раз.', "Couldn't save the payment method. Please try again."))
       } finally {
         setBusy(false)
       }
     },
-    [orderRef, advance, tr],
+    [orderRef, createOrder, advance, tr],
   )
 
   /** Выбор тарифа на экране сравнения: цена и план фиксируются до оплаты. */
@@ -411,33 +483,6 @@ export function FlowRoute({
   const goToOrder = useCallback(() => {
     if (orderRef) navigate(localePath(`/order/${encodeURIComponent(orderRef)}`))
   }, [orderRef, navigate])
-
-  /** Заказ создаётся на шаге email: дальше он и есть черновик. */
-  const createOrder = useCallback(async () => {
-    const attribution = getAttribution()
-    const gaMatch = typeof document !== 'undefined' ? document.cookie.match(/_ga=GA\d\.\d\.(\d+\.\d+)/) : null
-    const ymMatch = typeof document !== 'undefined' ? document.cookie.match(/_ym_uid=(\d+)/) : null
-
-    const res = await apiPost<{ orderId: string; flowVariant?: string; basePrice?: number }>('/api/orders/draft', {
-      sessionId,
-      email: answers.email.trim(),
-      whatsappNumber: answers.phone.trim() || null,
-      recipientName: answers.recipientName.trim(),
-      yourName: answers.recipientName.trim(),
-      occasion: answerText(answers.occasion, lang),
-      relationship: answerText(answers.relationship, lang),
-      ...(answers.recipientGender ? { recipientGender: answers.recipientGender } : {}),
-      ...(gaMatch ? { gaClientId: gaMatch[1] } : {}),
-      ...(ymMatch ? { ymClientId: ymMatch[1] } : {}),
-      ...(attribution ? { attribution } : {}),
-    })
-    setOrderRef(res.orderId)
-    trackPixelEvent('Lead', { content_name: 'AI Song', currency: 'USD', value: 0 }, `order_created:${res.orderId}`)
-    trackTikTokEvent('SubmitForm', { content_name: 'AI Song', currency: 'USD', value: 0 })
-    const dataLayer = ((window as unknown as { dataLayer?: Record<string, unknown>[] }).dataLayer ??= [])
-    dataLayer.push({ event: 'flow_order_created', flow_variant: config.flowVariant })
-    return res.orderId
-  }, [answers, sessionId, config.flowVariant, lang])
 
   /**
    * Песня по подписке: сервер сам делает заказ оплаченным (base_price=0, метка
