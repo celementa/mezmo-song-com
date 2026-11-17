@@ -418,6 +418,30 @@ export function FlowRoute({
     return res.orderId
   }, [answers, sessionId, config.flowVariant, lang])
 
+  /** Платить нечего (dev-режим, уже оплачен, подписка активна) — на страницу заказа. */
+  const goToOrder = useCallback(() => {
+    if (orderRef) navigate(localePath(`/order/${encodeURIComponent(orderRef)}`))
+  }, [orderRef, navigate])
+
+  /**
+   * Заказ больше не принимает ни ветку, ни тариф (payment-branch ответил 409
+   * not_pending). Причин две: заказ оплачен или отменён — ЮKassa закрывает
+   * неоплаченный платёж примерно через два часа.
+   *
+   * Оплаченный заказ второй раз не оформляем: деньги прошли, песня делается,
+   * и место человека — на странице заказа (true). Отменённый возвращает false:
+   * вызывающий заведёт вместо него новый черновик с теми же ответами.
+   */
+  const orderAlreadyPaid = useCallback(
+    async (ref: string) => {
+      const st = await apiGet<{ paymentStatus?: string }>(`/api/public/order/${encodeURIComponent(ref)}/status`)
+      if (st.paymentStatus !== 'paid') return false
+      goToOrder()
+      return true
+    },
+    [goToOrder],
+  )
+
   /**
    * Выбор ветки оплаты: фиксирует валюту и цену в заказе.
    *
@@ -425,6 +449,8 @@ export function FlowRoute({
    * неоплаченный платёж примерно через два часа, и на отменённый заказ
    * payment-branch отвечает 409 not_pending. Тогда заводим новый черновик с
    * теми же ответами и повторяем выбор — иначе шаг оплаты упирается в тупик.
+   * Оплаченный заказ не заменяем: человека уводит на его страницу
+   * orderAlreadyPaid.
    */
   const chooseBranch = useCallback(
     async (branch: PaymentBranch) => {
@@ -439,8 +465,9 @@ export function FlowRoute({
           try {
             res = await save(ref)
           } catch (err) {
-            // 409 not_pending — заказ отменён; ниже заведём вместо него новый.
+            // 409 not_pending — заказ оплачен или отменён; ниже решаем, что с ним делать.
             if (!(err instanceof Error) || err.message !== 'not_pending') throw err
+            if (await orderAlreadyPaid(ref)) return
           }
         }
         if (!res) {
@@ -455,34 +482,48 @@ export function FlowRoute({
         setBusy(false)
       }
     },
-    [orderRef, createOrder, advance, tr],
+    [orderRef, orderAlreadyPaid, createOrder, advance, tr],
   )
 
-  /** Выбор тарифа на экране сравнения: цена и план фиксируются до оплаты. */
+  /**
+   * Выбор тарифа на экране сравнения: цена и план фиксируются до оплаты.
+   *
+   * Переход на этот экран по истории браузера после оплаты — штатный: «назад»
+   * со страницы заказа встаёт на шаг перед оплатой, а в ценовом плече это и
+   * есть сравнение. План в оплаченный заказ уже не пишется, поэтому 409
+   * not_pending разбираем так же, как выбор ветки: оплаченный уводит на
+   * страницу заказа, отменённый заменяется новым черновиком.
+   */
   const choosePlan = useCallback(
     async (plan: 'onetime' | 'subscription') => {
       if (!orderRef) return
       const branch = paymentChoice?.branch ?? 'ru'
+      const save = (ref: string) =>
+        apiPost<PaymentChoice>(`/api/orders/${encodeURIComponent(ref)}/payment-branch`, { branch, plan })
       setPayVia(plan === 'subscription' ? 'subscription' : 'order')
       setBusy(true)
       setError(null)
       try {
-        const res = await apiPost<PaymentChoice>(`/api/orders/${encodeURIComponent(orderRef)}/payment-branch`, { branch, plan })
+        let ref = orderRef
+        let res: PaymentChoice
+        try {
+          res = await save(ref)
+        } catch (err) {
+          if (!(err instanceof Error) || err.message !== 'not_pending') throw err
+          if (await orderAlreadyPaid(ref)) return
+          ref = await createOrder(false)
+          res = await save(ref)
+        }
         setPaymentChoice(res)
-        advance(orderRef)
+        advance(ref)
       } catch {
         setError(tr('Не получилось сохранить тариф. Попробуйте ещё раз.', "Couldn't save the plan. Please try again."))
       } finally {
         setBusy(false)
       }
     },
-    [orderRef, paymentChoice?.branch, advance, tr],
+    [orderRef, paymentChoice?.branch, orderAlreadyPaid, createOrder, advance, tr],
   )
-
-  /** Платить нечего (dev-режим, уже оплачен, подписка активна) — на страницу заказа. */
-  const goToOrder = useCallback(() => {
-    if (orderRef) navigate(localePath(`/order/${encodeURIComponent(orderRef)}`))
-  }, [orderRef, navigate])
 
   /**
    * Песня по подписке: сервер сам делает заказ оплаченным (base_price=0, метка
