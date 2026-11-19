@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -131,6 +133,92 @@ func TestStripeWebhookSettlesPaidOrder(t *testing.T) {
 	}
 	if got.StripeCustomerID.String != "cus_test" || got.StripePaymentMethodID.String != "pm_test" {
 		t.Fatalf("stripe customer/pm = %q/%q, want cus_test/pm_test", got.StripeCustomerID.String, got.StripePaymentMethodID.String)
+	}
+}
+
+// Смена тарифа до оплаты не должна отдавать форму прежнего плана: старая
+// сессия гасится, создаётся новая с другим mode и суммой. Иначе человек,
+// выбравший подписку, оплачивал бы разовую покупку, а подписка не включалась.
+func TestInitiateStripeSwitchesPlanAndExpiresStaleSession(t *testing.T) {
+	var expired atomic.Bool
+	s := stripeTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/checkout/sessions" && r.Method == http.MethodPost:
+			_ = r.ParseForm()
+			if r.PostFormValue("mode") == payment.StripeModeSubscription {
+				_, _ = w.Write([]byte(`{"id":"cs_sub","client_secret":"cs_sub_secret","mode":"subscription","status":"open","payment_status":"unpaid","currency":"usd","amount_total":1500}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"id":"cs_one","client_secret":"cs_one_secret","mode":"payment","status":"open","payment_status":"unpaid","currency":"usd","amount_total":1900}`))
+		case r.URL.Path == "/v1/checkout/sessions/cs_one" && r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"id":"cs_one","mode":"payment","status":"open","payment_status":"unpaid","currency":"usd","amount_total":1900}`))
+		case r.URL.Path == "/v1/checkout/sessions/cs_one/expire" && r.Method == http.MethodPost:
+			expired.Store(true)
+			_, _ = w.Write([]byte(`{"id":"cs_one","status":"expired"}`))
+		default:
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+	o := seedStripeOrder(t, s)
+
+	first := httptest.NewRecorder()
+	s.initiateStripe(first, httptest.NewRequest("POST", "/", nil), o, "https://mezmo-song.com/order/x")
+	if first.Code != 200 {
+		t.Fatalf("first status = %d, body=%s", first.Code, first.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(first.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["sessionId"] != "cs_one" {
+		t.Fatalf("first session = %v, want cs_one", out["sessionId"])
+	}
+
+	// Покупатель вернулся назад и выбрал подписку $15 вместо разовой $19.
+	if _, err := s.DB.Exec(`UPDATE orders SET payment_plan = 'subscription', base_price = 15 WHERE id = ?`, "ord_stripe"); err != nil {
+		t.Fatal(err)
+	}
+	o, err := store.GetOrder(t.Context(), s.DB, "ord_stripe")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second := httptest.NewRecorder()
+	s.initiateStripe(second, httptest.NewRequest("POST", "/", nil), o, "https://mezmo-song.com/order/x")
+	if second.Code != 200 {
+		t.Fatalf("second status = %d, body=%s", second.Code, second.Body.String())
+	}
+	out = nil
+	if err := json.Unmarshal(second.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["sessionId"] != "cs_sub" {
+		t.Fatalf("after plan change session = %v, want cs_sub (старую сессию переиспользовать нельзя)", out["sessionId"])
+	}
+	if !expired.Load() {
+		t.Fatal("старая сессия разовой покупки не погашена")
+	}
+}
+
+// Заказы не должны рождаться уже оплаченными, когда платёжная ветка настроена
+// только через Stripe: иначе деньги не приходят, а песня генерируется.
+func TestStripeOnlyDraftStaysPending(t *testing.T) {
+	s := stripeTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("Stripe API must not be called on draft: %s", r.URL.Path)
+	})
+	req := httptest.NewRequest("POST", "/api/orders/draft", strings.NewReader(`{"sessionId":"smoke","email":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.handleOrdersDraft(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["paymentStatus"] != store.PaymentPending {
+		t.Fatalf("paymentStatus = %v, want %s", out["paymentStatus"], store.PaymentPending)
 	}
 }
 

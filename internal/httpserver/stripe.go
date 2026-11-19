@@ -86,21 +86,40 @@ func (s *Server) initiateStripe(w http.ResponseWriter, r *http.Request, o store.
 		mode = payment.StripeModeSubscription
 	}
 	email, _ := orderCustomer(o)
+	expected := s.expectedPaymentRubles(ctx, o)
+	wantCurrency := s.orderCurrency(o)
 
 	// Повторный клик не должен открывать вторую оплачиваемую сессию. Живую
 	// сессию перечитываем из API: confirmation могла остаться от прошлой ветки.
 	if c, ok := store.LoadConfirmation(o); ok && c.Mode == stripeConfirmationMode &&
 		time.Since(c.IssuedAt) < confirmationTTL && c.PaymentID != "" && c.Token != "" {
 		if sess, err := s.stripe().GetCheckoutSession(c.PaymentID); err == nil && sess.Status == "open" {
-			log.Printf("[pay] stripe order=%s session=%s reused", o.ID, sess.ID)
-			writeJSON(w, 200, map[string]any{
-				"provider":       ProviderStripe,
-				"clientSecret":   c.Token,
-				"publishableKey": s.Config.StripePublishableKey,
-				"sessionId":      c.PaymentID,
-				"returnUrl":      returnURL,
-			})
-			return
+			// Подтверждение живёт дольше экрана выбора тарифа: человек может
+			// вернуться назад и сменить разовую покупку на подписку. Старая
+			// сессия тогда уже не описывает заказ — отдать её значит показать
+			// форму не того плана, а после оплаты не включить подписку.
+			// Переиспользуем только при совпадении режима, валюты и суммы.
+			if sess.Mode == mode && strings.EqualFold(sess.Currency, wantCurrency) &&
+				sess.AmountTotal == int64(expected)*100 {
+				log.Printf("[pay] stripe order=%s session=%s reused", o.ID, sess.ID)
+				writeJSON(w, 200, map[string]any{
+					"provider":       ProviderStripe,
+					"clientSecret":   c.Token,
+					"publishableKey": s.Config.StripePublishableKey,
+					"sessionId":      c.PaymentID,
+					"returnUrl":      returnURL,
+				})
+				return
+			}
+			// Старую форму гасим: её client_secret уже у покупателя в
+			// sessionStorage, и открытая вкладка иначе могла бы оплатить
+			// тариф, который он больше не выбирал.
+			if err := s.stripe().ExpireCheckoutSession(c.PaymentID); err != nil {
+				log.Printf("[pay] stripe order=%s session=%s expire after plan change err=%v", o.ID, c.PaymentID, err)
+			} else {
+				log.Printf("[pay] stripe order=%s session=%s expired: план сменился (want mode=%s amount=%d %s)",
+					o.ID, c.PaymentID, mode, expected, wantCurrency)
+			}
 		}
 	}
 

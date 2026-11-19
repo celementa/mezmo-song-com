@@ -194,6 +194,14 @@ func (s Stripe) GetCheckoutSession(id string) (StripeCheckoutSession, error) {
 	return out, nil
 }
 
+// ExpireCheckoutSession закрывает открытую сессию. Нужна при смене тарифа до
+// оплаты: старый client_secret уже лежит в браузере покупателя, и оставлять
+// его оплачиваемым значит дать оплатить тариф, которого он уже не выбирал.
+func (s Stripe) ExpireCheckoutSession(id string) error {
+	_, err := s.do(http.MethodPost, "/v1/checkout/sessions/"+url.PathEscape(id)+"/expire", nil, "")
+	return err
+}
+
 // StripeSubscription — минимальная часть объекта подписки, нужная для доступа:
 // статус и конец оплаченного периода.
 type StripeSubscription struct {

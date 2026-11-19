@@ -32,7 +32,7 @@ const (
 // paymentsConfigured — есть ли чем принимать деньги. Нет — mock-режим стенда:
 // заказ создаётся сразу оплаченным.
 func (s *Server) paymentsConfigured() bool {
-	return s.unitpayConfigured() || s.yooConfigured()
+	return s.unitpayConfigured() || s.yooConfigured() || s.stripeConfigured()
 }
 
 func (s *Server) unitpayConfigured() bool {
