@@ -163,8 +163,9 @@ const localizedPages: RouteObject[] = (['ru', 'en'] as const).flatMap((lang) => 
 ])
 
 // RU-страницы подписки. В contentPages их не кладём: localizedPages размножил бы
-// их на /en, а подписка — только русская. Адреса работают и без префикса, и под
-// /ru; /en/subscribe остаётся 404 (маршрута нет).
+// их на /en, а подписка/оферта — только русские. Адреса работают и без префикса,
+// и под /ru; /en/subscribe остаётся 404 (маршрута нет). EN-кабинет и отмена
+// подключаются отдельно ниже — это одни и те же компоненты с выбором языка.
 const subscriptionPages: RouteObject[] = [
   { path: '/subscribe', element: <Suspense fallback={<LazyFallback />}><SubscribeRoute /></Suspense> },
   { path: '/subscribe/return', element: <Suspense fallback={<LazyFallback />}><SubscribeReturnRoute /></Suspense> },
@@ -183,6 +184,11 @@ export const router = createBrowserRouter([
       ...localizedPages,
       ...subscriptionPages,
       ...subscriptionPages.map((p) => ({ ...p, path: `/ru${p.path}` })),
+      // EN-кабинет и отмена подписки: те же компоненты, язык берут из адреса.
+      // /en/subscribe по-прежнему 404 — в EN подписка покупается в воронке.
+      { path: '/en/account', element: <Suspense fallback={<LazyFallback />}><AccountRoute /></Suspense> },
+      { path: '/en/account/new', element: <Suspense fallback={<LazyFallback />}><AccountNewRoute /></Suspense> },
+      { path: '/en/subscription/cancel', element: <Suspense fallback={<LazyFallback />}><SubscriptionCancelRoute /></Suspense> },
       // Старые ссылки без языка продолжают открываться: их уже разослали в
       // письмах и кампаниях. Новые ссылки всегда строятся с /ru или /en.
       ...contentPages,

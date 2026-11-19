@@ -338,7 +338,7 @@ func (s *Server) activateStripeOrderSubscription(ctx context.Context, o store.Or
 		return fmt.Errorf("no customer email")
 	}
 	name, _ := jsonField(o.InputPayloadJSON, "yourName")
-	sub, err := store.UpsertPendingSubscription(ctx, s.DB, email, name)
+	sub, err := store.UpsertPendingSubscriptionLang(ctx, s.DB, email, name, o.Lang())
 	if errors.Is(err, store.ErrSubscriptionActive) {
 		return nil // уже есть живая подписка — заказ просто войдёт в неё
 	}
@@ -352,8 +352,15 @@ func (s *Server) activateStripeOrderSubscription(ctx context.Context, o store.Or
 		}
 	}
 	currency := strings.ToUpper(sess.Currency)
-	_, err = store.ActivateStripeSubscription(ctx, s.DB, sub.ID, sess.Subscription, sess.Customer, currency, price, periodEnd)
-	return err
+	activated, err := store.ActivateStripeSubscription(ctx, s.DB, sub.ID, sess.Subscription, sess.Customer, currency, price, periodEnd)
+	if err != nil {
+		return err
+	}
+	if activated {
+		// trial-сессия («0 сегодня») законно приходит с amount_total=0.
+		s.sendStripeSubscriptionWelcome(ctx, sub.ID, sess.AmountTotal == 0)
+	}
+	return nil
 }
 
 // linkStripeOrderSubscription привязывает оплаченный заказ к подписке, не
@@ -445,7 +452,7 @@ func (s *Server) activateStripeSubscriptionDirect(ctx context.Context, o store.O
 		return fmt.Errorf("no customer email")
 	}
 	name, _ := jsonField(o.InputPayloadJSON, "yourName")
-	sub, err := store.UpsertPendingSubscription(ctx, s.DB, email, name)
+	sub, err := store.UpsertPendingSubscriptionLang(ctx, s.DB, email, name, o.Lang())
 	if errors.Is(err, store.ErrSubscriptionActive) {
 		existing, gerr := store.GetSubscriptionByEmail(ctx, s.DB, email)
 		if gerr != nil {
@@ -459,5 +466,7 @@ func (s *Server) activateStripeSubscriptionDirect(ctx context.Context, o store.O
 	if _, err := store.ActivateStripeSubscription(ctx, s.DB, sub.ID, remote.ID, remote.Customer, "USD", price, periodEnd); err != nil {
 		return err
 	}
+	// Прямой апсейл — всегда trial 30 дней («0 сегодня»).
+	s.sendStripeSubscriptionWelcome(ctx, sub.ID, true)
 	return store.LinkOrderSubscription(ctx, s.DB, o.ID, sub.ID)
 }

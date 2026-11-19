@@ -22,6 +22,77 @@ func TestAddCalendarMonthClampsDay(t *testing.T) {
 	}
 }
 
+// Заявка на welcome-письмо атомарная: повторный вебхук не шлёт второе письмо,
+// а повторное оформление подписки снова разрешает welcome.
+func TestClaimSubscriptionWelcomeOnce(t *testing.T) {
+	ctx, db := testDB(t)
+	sub, _ := UpsertPendingSubscription(ctx, db, "welcome@b.ru", "")
+	first, err := ClaimSubscriptionWelcome(ctx, db, sub.ID)
+	if err != nil || !first {
+		t.Fatalf("first claim = %v, %v; want true, nil", first, err)
+	}
+	second, err := ClaimSubscriptionWelcome(ctx, db, sub.ID)
+	if err != nil || second {
+		t.Fatalf("second claim = %v, %v; want false, nil", second, err)
+	}
+	if _, err := UpsertPendingSubscription(ctx, db, "welcome@b.ru", ""); err != nil {
+		t.Fatal(err)
+	}
+	third, err := ClaimSubscriptionWelcome(ctx, db, sub.ID)
+	if err != nil || !third {
+		t.Fatalf("claim after re-subscribe = %v, %v; want true, nil", third, err)
+	}
+}
+
+// Активация Stripe фиксирует дату следующего списания: она нужна письму и
+// кабинету, а планировщик Stripe-подписки всё равно не трогает.
+func TestActivateStripeSubscriptionSetsNextCharge(t *testing.T) {
+	ctx, db := testDB(t)
+	sub, _ := UpsertPendingSubscription(ctx, db, "next@b.ru", "")
+	periodEnd := time.Now().UTC().AddDate(0, 1, 0).Truncate(time.Second)
+	if _, err := ActivateStripeSubscription(ctx, db, sub.ID, "sub_next", "cus_next", "USD", 15, periodEnd); err != nil {
+		t.Fatal(err)
+	}
+	got, err := GetSubscription(ctx, db, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != SubActive || got.NextChargeAt.String != periodEnd.Format(time.RFC3339) {
+		t.Fatalf("status/next = %s/%s, want active/%s", got.Status, got.NextChargeAt.String, periodEnd.Format(time.RFC3339))
+	}
+	if got.SubCurrency() != "USD" {
+		t.Fatalf("currency = %q, want USD", got.SubCurrency())
+	}
+}
+
+// Язык подписки фиксируется при оформлении и перезаписывается при повторном
+// оформлении: от него зависят письма и ссылки кабинета. У старых строк NULL —
+// считается ru.
+func TestUpsertPendingSubscriptionLanguage(t *testing.T) {
+	ctx, db := testDB(t)
+	sub, err := UpsertPendingSubscriptionLang(ctx, db, "lang@b.ru", "", LangEN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.SubLanguage() != LangEN {
+		t.Fatalf("sub language = %q, want en", sub.SubLanguage())
+	}
+	if _, err := db.Exec(`UPDATE subscriptions SET language = NULL WHERE id = ?`, sub.ID); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := GetSubscription(ctx, db, sub.ID)
+	if old.SubLanguage() != LangRU {
+		t.Fatalf("NULL language = %q, want ru", old.SubLanguage())
+	}
+	if _, err := UpsertPendingSubscriptionLang(ctx, db, "lang@b.ru", "", LangRU); err != nil {
+		t.Fatal(err)
+	}
+	fresh, _ := GetSubscription(ctx, db, sub.ID)
+	if fresh.SubLanguage() != LangRU {
+		t.Fatalf("re-subscribe language = %q, want ru", fresh.SubLanguage())
+	}
+}
+
 // Первый платёж активирует подписку на месяц; дубль того же платежа (ретрай
 // вебхука) не продлевает второй раз и не считается «первым» для писем.
 func TestRecordSubscriptionPaymentIdempotent(t *testing.T) {
@@ -199,6 +270,33 @@ func TestReminderOncePerChargeDate(t *testing.T) {
 }
 
 // Сессия кабинета живёт до expires_at, заказы подписки видны и считаются в лимит.
+// invoice.paid по уже отменённой Stripe-подписке продлевает доступ, но не
+// возвращает статус active: отмена не должна откатываться успешным платежом.
+func TestExtendStripeSubscriptionKeepsCanceled(t *testing.T) {
+	ctx, db := testDB(t)
+	sub, _ := UpsertPendingSubscription(ctx, db, "s@b.ru", "")
+	now := time.Now().UTC()
+	if _, err := db.Exec(`UPDATE subscriptions SET status = ?, provider = 'stripe',
+		stripe_subscription_id = 'sub_x', access_until = ? WHERE id = ?`,
+		SubCanceled, now.Format(time.RFC3339), sub.ID); err != nil {
+		t.Fatal(err)
+	}
+	periodEnd := now.AddDate(0, 1, 0)
+	if err := ExtendStripeSubscription(ctx, db, "sub_x", periodEnd); err != nil {
+		t.Fatal(err)
+	}
+	got, err := GetSubscription(ctx, db, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != SubCanceled {
+		t.Fatalf("status=%s, want canceled (отмена не откатывается invoice.paid)", got.Status)
+	}
+	if got.AccessUntil.String != periodEnd.Format(time.RFC3339) {
+		t.Fatalf("access_until=%s, want %s", got.AccessUntil.String, periodEnd.Format(time.RFC3339))
+	}
+}
+
 func TestSessionsAndSubscriptionOrders(t *testing.T) {
 	ctx, db := testDB(t)
 	sub, _ := UpsertPendingSubscription(ctx, db, "s@t.ru", "")

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -212,6 +213,81 @@ func TestSubscriptionCancelByToken(t *testing.T) {
 	if !got.HasAccess(time.Now().UTC()) {
 		t.Fatal("доступ до конца периода обязан сохраниться")
 	}
+}
+
+// Отмена Stripe-подписки обязана дойти до Stripe: локальная отметка без API
+// оставила бы списания живыми. Успех — 200 и canceled локально; отказ API —
+// 502 и подписка не тронута.
+func TestSubscriptionCancelStripeCallsAPI(t *testing.T) {
+	var called atomic.Bool
+	s := stripeTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/subscriptions/sub_123" || r.Method != http.MethodPost {
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		_ = r.ParseForm()
+		if r.PostFormValue("cancel_at_period_end") != "true" {
+			t.Fatalf("cancel_at_period_end = %q, want true", r.PostFormValue("cancel_at_period_end"))
+		}
+		called.Store(true)
+		_, _ = w.Write([]byte(`{"id":"sub_123","status":"active","cancel_at_period_end":true}`))
+	})
+	sub := seedStripeSubscription(t, s, "stripe-cancel@t.ru")
+
+	rec := httptest.NewRecorder()
+	s.handleSubscriptionCancel(rec, httptest.NewRequest("POST", "/api/subscription/cancel",
+		strings.NewReader(fmt.Sprintf(`{"token":%q}`, sub.CancelToken))))
+	if rec.Code != 200 {
+		t.Fatalf("cancel: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !called.Load() {
+		t.Fatal("Stripe API не вызван — подписка продолжила бы списывать")
+	}
+	got, _ := store.GetSubscription(t.Context(), s.DB, sub.ID)
+	if got.Status != store.SubCanceled {
+		t.Fatalf("status=%s, want canceled", got.Status)
+	}
+	if !got.HasAccess(time.Now().UTC()) {
+		t.Fatal("доступ до конца оплаченного периода обязан сохраниться")
+	}
+}
+
+func TestSubscriptionCancelStripeAPIErrorKeepsLocalState(t *testing.T) {
+	s := stripeTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		_, _ = w.Write([]byte(`{"error":{"message":"boom"}}`))
+	})
+	sub := seedStripeSubscription(t, s, "stripe-cancel-err@t.ru")
+
+	rec := httptest.NewRecorder()
+	s.handleSubscriptionCancel(rec, httptest.NewRequest("POST", "/api/subscription/cancel",
+		strings.NewReader(fmt.Sprintf(`{"token":%q}`, sub.CancelToken))))
+	if rec.Code != 502 {
+		t.Fatalf("cancel: code=%d body=%s, want 502", rec.Code, rec.Body.String())
+	}
+	got, _ := store.GetSubscription(t.Context(), s.DB, sub.ID)
+	if got.Status != store.SubActive {
+		t.Fatalf("status=%s, want active (локальную отмену при отказе API не делаем)", got.Status)
+	}
+}
+
+// seedStripeSubscription — активная подписка, которую ведёт Stripe.
+func seedStripeSubscription(t *testing.T, s *Server, email string) store.Subscription {
+	t.Helper()
+	sub, err := store.UpsertPendingSubscription(t.Context(), s.DB, email, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	until := time.Now().UTC().AddDate(0, 1, 0).Format(time.RFC3339)
+	if _, err := s.DB.Exec(`UPDATE subscriptions SET status = ?, provider = 'stripe', currency = 'USD',
+		stripe_subscription_id = 'sub_123', stripe_customer_id = 'cus_1', price_rub = 15,
+		access_until = ? WHERE id = ?`, store.SubActive, until, sub.ID); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := store.GetSubscription(t.Context(), s.DB, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fresh
 }
 
 // Email из subscription.test_emails активируется без оплаты даже при настроенной

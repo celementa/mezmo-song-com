@@ -19,7 +19,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -87,7 +86,7 @@ func (s *Server) handleOrderSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name, _ := jsonField(o.InputPayloadJSON, "yourName")
-	sub, err := store.UpsertPendingSubscription(ctx, s.DB, email, name)
+	sub, err := store.UpsertPendingSubscriptionLang(ctx, s.DB, email, name, o.Lang())
 	if errors.Is(err, store.ErrSubscriptionActive) {
 		writeJSON(w, 409, map[string]string{"error": "already_active"})
 		return
@@ -162,7 +161,7 @@ func (s *Server) handleOrderSubscribeInstead(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	name, _ := jsonField(o.InputPayloadJSON, "yourName")
-	sub, err := store.UpsertPendingSubscription(ctx, s.DB, email, name)
+	sub, err := store.UpsertPendingSubscriptionLang(ctx, s.DB, email, name, o.Lang())
 	if errors.Is(err, store.ErrSubscriptionActive) {
 		// Подписка уже есть — песня просто входит в неё, платить не нужно.
 		existing, gerr := store.GetSubscriptionByEmail(ctx, s.DB, email)
@@ -380,16 +379,28 @@ func (s *Server) fulfillOrderViaSubscription(ctx context.Context, orderID, subID
 // sendSubscriptionTrialEmail — приветствие подписки «0 ₽ сегодня»: первое
 // списание через месяц, отсюда и отличие от обычного welcome-письма.
 func (s *Server) sendSubscriptionTrialEmail(sub store.Subscription) {
-	s.sendSubscriptionMail(emailSubWelcome, sub, "Подписка оформлена",
+	firstRU := "Первое списание " + subPriceLabel(sub) + " — " + fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String) +
+		", напомним письмом за 3 дня."
+	firstEN := "First charge " + subPriceLabel(sub) + " on " + fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String) +
+		"; we'll remind you 3 days before."
+	// Планировщик наши напоминания Stripe-подписке не шлёт: продлениями и
+	// чеками занимается Stripe. Обещать письмо, которого не будет, нельзя.
+	if sub.Provider.String == ProviderStripe {
+		firstRU = "Первое списание " + subPriceLabel(sub) + " — " + fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String) +
+			". Списание проведёт Stripe по сохранённой карте."
+		firstEN = "First charge " + subPriceLabel(sub) + " on " + fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String) +
+			". Stripe will charge the saved card."
+	}
+	ruSubject, ruBody := "Подписка оформлена",
 		"Здравствуйте!\n\nБезлимит песен включён. Сегодняшняя песня уже входит в подписку — сегодня мы ничего не списывали.\n"+
-			"Первое списание "+rubLabel(subPrice(sub))+" — "+fmtRuDate(sub.NextChargeAt.String)+
-			", напомним письмом за 3 дня.\n\nКабинет: "+s.subAccountURL()+
-			"\nОтменить подписку в любой момент: "+s.subCancelURL(sub)+"\n",
-		map[string]string{"trial": "1"})
-}
-
-func rubLabel(n int) string {
-	return strconv.Itoa(n) + " ₽"
+			firstRU+"\n\nКабинет: "+s.subAccountURL(sub)+
+			"\nОтменить подписку в любой момент: "+s.subCancelURL(sub)+"\n"
+	enSubject, enBody := "Your subscription is active",
+		"Hi!\n\nUnlimited songs are active. Today's song is included — we didn't charge anything today.\n"+
+			firstEN+"\n\nYour account: "+s.subAccountURL(sub)+
+			"\nCancel anytime: "+s.subCancelURL(sub)+"\n"
+	subject, body := subMailTexts(sub, ruSubject, enSubject, ruBody, enBody)
+	s.sendSubscriptionMail(emailSubWelcome, sub, subject, body, map[string]string{"trial": "1"})
 }
 
 // jsonField — строковое поле из JSON заказа.

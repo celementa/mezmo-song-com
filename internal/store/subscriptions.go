@@ -77,9 +77,12 @@ func IsSubscriptionTestEmail(ctx context.Context, db *sql.DB, email string) bool
 }
 
 type Subscription struct {
-	ID              string
-	Email           string // всегда в нижнем регистре
-	CustomerName    sql.NullString
+	ID           string
+	Email        string // всегда в нижнем регистре
+	CustomerName sql.NullString
+	// Language — язык, на котором оформлена подписка: ru | en. У старых строк
+	// NULL — считается ru. От него зависят письма и ссылки кабинета.
+	Language        sql.NullString
 	Status          string
 	YooMethodID     sql.NullString // сохранённый способ оплаты для автосписаний
 	AccessUntil     sql.NullString // RFC3339; доступ к кабинету и создание песен
@@ -108,6 +111,19 @@ type Subscription struct {
 	StripeSubscriptionID sql.NullString
 	StripeCustomerID     sql.NullString
 	CreatedAt            time.Time
+}
+
+// SubLanguage — язык подписки: en или ru. У старых строк NULL — ru.
+func (s Subscription) SubLanguage() string {
+	return NormalizeLang(s.Language.String)
+}
+
+// SubCurrency — валюта цены подписки: USD у Stripe, RUB у ЮKassa и у старых строк.
+func (s Subscription) SubCurrency() string {
+	if strings.EqualFold(strings.TrimSpace(s.Currency.String), "USD") {
+		return "USD"
+	}
+	return "RUB"
 }
 
 // AccessUntilTime — access_until как время; нулевое время, если доступа не было.
@@ -205,6 +221,12 @@ CREATE TABLE IF NOT EXISTS subscription_sessions (
 	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN currency TEXT`)
 	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN stripe_subscription_id TEXT`)
 	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN stripe_customer_id TEXT`)
+	// language — язык оформления подписки (ru|en): письма и ссылки кабинета.
+	// NULL у старых строк — считается ru.
+	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN language TEXT`)
+	// welcome_sent_at — заявка на welcome-письмо: вебхук Stripe ретраится, а
+	// письмо об активации должно уйти ровно один раз.
+	_, _ = db.Exec(`ALTER TABLE subscriptions ADD COLUMN welcome_sent_at TEXT`)
 	// Заказы подписчиков связываются с подпиской напрямую — список «мои песни»
 	// в кабинете и суточный лимит считаются по этой колонке.
 	_, _ = db.Exec(`ALTER TABLE orders ADD COLUMN subscription_id TEXT`)
@@ -238,7 +260,15 @@ func AddCalendarMonth(t time.Time) time.Time {
 var ErrSubscriptionActive = errors.New("subscription already active")
 
 func UpsertPendingSubscription(ctx context.Context, db *sql.DB, email, name string) (Subscription, error) {
+	return UpsertPendingSubscriptionLang(ctx, db, email, name, LangRU)
+}
+
+// UpsertPendingSubscriptionLang — тот же апсерт с явным языком оформления.
+// Язык нужен письмам и ссылкам кабинета; у повторного оформления он
+// перезаписывается: человек мог вернуться на другую языковую версию.
+func UpsertPendingSubscriptionLang(ctx context.Context, db *sql.DB, email, name, language string) (Subscription, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
+	language = NormalizeLang(language)
 	if email == "" {
 		return Subscription{}, fmt.Errorf("subscriptions: empty email")
 	}
@@ -267,10 +297,12 @@ func UpsertPendingSubscription(ctx context.Context, db *sql.DB, email, name stri
 		_, err = db.ExecContext(ctx, `
 			UPDATE subscriptions SET
 				customer_name = COALESCE(NULLIF(?, ''), customer_name),
+				language = ?,
 				status = ?, next_charge_at = NULL, yoo_payment_method_id = NULL,
-				pending_payment_id = NULL, updated_at = ?
+				stripe_subscription_id = NULL, stripe_customer_id = NULL,
+				pending_payment_id = NULL, welcome_sent_at = NULL, updated_at = ?
 			WHERE id = ?`,
-			strings.TrimSpace(name), SubPending, now.Format(time.RFC3339), existing.ID)
+			strings.TrimSpace(name), language, SubPending, now.Format(time.RFC3339), existing.ID)
 		if err != nil {
 			return Subscription{}, err
 		}
@@ -279,6 +311,7 @@ func UpsertPendingSubscription(ctx context.Context, db *sql.DB, email, name stri
 		sub := Subscription{
 			ID:          "sub_" + newSubToken(),
 			Email:       email,
+			Language:    sql.NullString{String: language, Valid: true},
 			Status:      SubPending,
 			CancelToken: newSubToken(),
 			CreatedAt:   now,
@@ -287,9 +320,9 @@ func UpsertPendingSubscription(ctx context.Context, db *sql.DB, email, name stri
 			sub.CustomerName = sql.NullString{String: n, Valid: true}
 		}
 		_, err = db.ExecContext(ctx, `
-			INSERT INTO subscriptions (id, email, customer_name, status, cancel_token, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			sub.ID, sub.Email, sub.CustomerName, sub.Status, sub.CancelToken,
+			INSERT INTO subscriptions (id, email, customer_name, status, cancel_token, language, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			sub.ID, sub.Email, sub.CustomerName, sub.Status, sub.CancelToken, language,
 			now.Format(time.RFC3339), now.Format(time.RFC3339))
 		if err != nil {
 			return Subscription{}, err
@@ -302,7 +335,8 @@ func UpsertPendingSubscription(ctx context.Context, db *sql.DB, email, name stri
 
 const subColumns = `id, email, customer_name, status, yoo_payment_method_id, access_until, next_charge_at,
 	cancel_token, reminder_sent_for, last_charge_attempt_at, attribution, price_rub, created_at,
-	ga_client_id, ym_client_id, pending_payment_id, provider, currency, stripe_subscription_id, stripe_customer_id`
+	ga_client_id, ym_client_id, pending_payment_id, provider, currency, stripe_subscription_id, stripe_customer_id,
+	language`
 
 func scanSubscription(row interface{ Scan(...any) error }) (Subscription, error) {
 	var s Subscription
@@ -311,7 +345,7 @@ func scanSubscription(row interface{ Scan(...any) error }) (Subscription, error)
 	err := row.Scan(&s.ID, &s.Email, &s.CustomerName, &s.Status, &s.YooMethodID, &s.AccessUntil,
 		&s.NextChargeAt, &s.CancelToken, &s.ReminderSentFor, &s.LastAttemptAt, &s.AttributionJSON, &price, &created,
 		&s.GAClientID, &s.YMClientID, &s.PendingPaymentID, &s.Provider, &s.Currency,
-		&s.StripeSubscriptionID, &s.StripeCustomerID)
+		&s.StripeSubscriptionID, &s.StripeCustomerID, &s.Language)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, ErrNotFound
 	}
@@ -639,11 +673,11 @@ func ActivateStripeSubscription(ctx context.Context, db *sql.DB, subID, stripeSu
 	res, err := db.ExecContext(ctx, `
 		UPDATE subscriptions SET
 			status = ?, provider = 'stripe', currency = ?, stripe_subscription_id = ?,
-			stripe_customer_id = ?, price_rub = ?, access_until = ?, next_charge_at = NULL,
+			stripe_customer_id = ?, price_rub = ?, access_until = ?, next_charge_at = ?,
 			yoo_payment_method_id = NULL, reminder_sent_for = NULL, updated_at = ?
 		WHERE id = ?`,
 		SubActive, strings.ToUpper(currency), stripeSubID, customerID, price,
-		periodEnd.UTC().Format(time.RFC3339), now.Format(time.RFC3339), subID)
+		periodEnd.UTC().Format(time.RFC3339), periodEnd.UTC().Format(time.RFC3339), now.Format(time.RFC3339), subID)
 	if err != nil {
 		return false, err
 	}
@@ -652,16 +686,34 @@ func ActivateStripeSubscription(ctx context.Context, db *sql.DB, subID, stripeSu
 }
 
 // ExtendStripeSubscription продлевает доступ по invoice.paid. Идемпотентно:
-// повторный вебхук ставит ту же дату.
+// повторный вебхук ставит ту же дату. Отменённую подписку не оживляет: иначе
+// успешный платёж по уже отменённой (например, финализированный до отмены)
+// возвращал бы статус active, и кабинет показывал бы живую подписку.
 func ExtendStripeSubscription(ctx context.Context, db *sql.DB, stripeSubID string, periodEnd time.Time) error {
 	if stripeSubID == "" || periodEnd.IsZero() {
 		return nil
 	}
 	_, err := db.ExecContext(ctx, `
-		UPDATE subscriptions SET status = ?, access_until = ?, updated_at = ?
+		UPDATE subscriptions SET
+			status = CASE WHEN status = ? THEN status ELSE ? END,
+			access_until = ?, next_charge_at = ?, updated_at = ?
 		WHERE stripe_subscription_id = ?`,
-		SubActive, periodEnd.UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), stripeSubID)
+		SubCanceled, SubActive, periodEnd.UTC().Format(time.RFC3339), periodEnd.UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), stripeSubID)
 	return err
+}
+
+// ClaimSubscriptionWelcome — атомарная заявка на welcome-письмо подписки:
+// true ровно один раз, даже если вебхук Stripe повторится. Сбрасывается при
+// повторном оформлении (UpsertPendingSubscriptionLang).
+func ClaimSubscriptionWelcome(ctx context.Context, db *sql.DB, subID string) (bool, error) {
+	res, err := db.ExecContext(ctx,
+		`UPDATE subscriptions SET welcome_sent_at = ? WHERE id = ? AND welcome_sent_at IS NULL`,
+		time.Now().UTC().Format(time.RFC3339), subID)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 // CancelStripeSubscription помечает подписку отменённой. Доступ не отнимается:

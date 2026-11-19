@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { Link } from 'react-router-dom'
 import { Loader2, LogOut, Music, Plus } from 'lucide-react'
 
+import { formatMoney, type OrderCurrency } from '@/lib/currency'
 import { apiGet, apiPost } from '@/lib/http'
-import { localePath } from '@/lib/lang'
+import { localePath, useLang, useTr } from '@/lib/lang'
 import {
   cream,
   formatSubDate,
@@ -14,11 +15,6 @@ import {
   muted,
   serif,
 } from '@/features/subscription/styles'
-
-// Страница только русская (в /en маршрута нет), поэтому строки — русскими
-// литералами, без tr(), а ссылки — с явным 'ru': человек остаётся в русской
-// версии сайта, даже если кука выбора языка говорила обратное.
-const RU = 'ru'
 
 const bodyFont = "'Onest', sans-serif"
 
@@ -34,6 +30,9 @@ type Me = {
   nextChargeAt: string | null
   canceled: boolean
   priceRub: number
+  price?: number
+  currency?: OrderCurrency
+  language?: 'ru' | 'en'
   dailyLimit: number
   usedToday: number
 }
@@ -51,11 +50,11 @@ type SubOrder = {
 // бэкенд отвечает access_expired, и человеку нужен другой следующий шаг.
 type LoginError = 'not_found' | 'expired'
 
-const ORDER_STATUS: Record<string, string> = {
-  created: 'в очереди',
-  processing: 'генерится…',
-  completed: 'готова',
-  failed: 'ошибка',
+const ORDER_STATUS: Record<string, [string, string]> = {
+  created: ['в очереди', 'queued'],
+  processing: ['генерится…', 'generating…'],
+  completed: ['готова', 'ready'],
+  failed: ['ошибка', 'failed'],
 }
 
 const inWork = (order: SubOrder) => order.status === 'created' || order.status === 'processing'
@@ -70,15 +69,17 @@ function CabinetPage({
   onLogout: () => void
   children: ReactNode
 }) {
+  const tr = useTr()
+  const lang = useLang()
   return (
     <div className="min-h-screen" style={{ backgroundColor: cream, color: ink, fontFamily: bodyFont }}>
       <header className="mx-auto flex max-w-3xl items-center justify-between px-5 py-5">
         <Link
-          to={localePath('/', RU)}
+          to={localePath('/', lang)}
           className="text-sm font-bold transition hover:opacity-70"
           style={{ color: muted }}
         >
-          ← На главную
+          {tr('← На главную', '← Back to home')}
         </Link>
         {me && (
           <button
@@ -88,7 +89,7 @@ function CabinetPage({
             style={{ color: muted }}
           >
             <LogOut className="h-4 w-4" />
-            Выйти
+            {tr('Выйти', 'Sign out')}
           </button>
         )}
       </header>
@@ -98,9 +99,12 @@ function CabinetPage({
 }
 
 // Личный кабинет подписчика: вход по email (без пароля — сессию выдаёт только
-// подписка с живым оплаченным периодом), карточка подписки, отмена с отвязкой
-// карты, список песен и переход к созданию новой.
+// подписка с живым оплаченным периодом), карточка подписки, отмена, список
+// песен и переход к созданию новой. Одна страница на оба языка: тексты через
+// tr(), ссылки и даты — по языку текущего адреса.
 export function AccountRoute() {
+  const tr = useTr()
+  const lang = useLang()
   const [me, setMe] = useState<Me | null>(null)
   const [checked, setChecked] = useState(false)
   const [orders, setOrders] = useState<SubOrder[]>([])
@@ -189,16 +193,23 @@ export function AccountRoute() {
     )
   }
 
+  // EN-версия подписки продаётся в воронке на плече с экраном «подписка /
+  // разовая»: отдельной /en/subscribe нет.
+  const subscribePath = localePath(lang === 'en' ? '/config?arm=variant3-500-750s' : '/subscribe', lang)
+
   if (!me) {
     return (
       <CabinetPage me={null} onLogout={logout}>
         <div className="mx-auto max-w-md">
           <div className="rounded-3xl bg-white p-6 shadow-md md:p-8">
             <h1 className="mb-1 text-2xl" style={serif}>
-              Личный кабинет
+              {tr('Личный кабинет', 'Your account')}
             </h1>
             <p className="mb-6 text-sm" style={{ color: muted }}>
-              Введите email, на который оформлена подписка.
+              {tr(
+                'Введите email, на который оформлена подписка.',
+                'Enter the email you used to subscribe.',
+              )}
             </p>
             <form onSubmit={login} className="space-y-4">
               <input
@@ -214,14 +225,14 @@ export function AccountRoute() {
                 <div className="rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: '#fdeaea', color: '#8a2121' }}>
                   {loginError === 'expired' ? (
                     <>
-                      Оплаченный период закончился. Оформите подписку заново:{' '}
-                      <Link to={localePath('/subscribe', RU)} className="font-semibold underline">
-                        оформить подписку
+                      {tr('Оплаченный период закончился. Оформите подписку заново:', 'Your paid period has ended. Subscribe again:')}{' '}
+                      <Link to={subscribePath} className="font-semibold underline">
+                        {tr('оформить подписку', 'subscribe')}
                       </Link>
                       .
                     </>
                   ) : (
-                    'Подписка с таким email не найдена.'
+                    tr('Подписка с таким email не найдена.', 'No subscription found for this email.')
                   )}
                 </div>
               )}
@@ -231,13 +242,13 @@ export function AccountRoute() {
                 className="w-full rounded-xl px-8 py-4 text-sm font-black transition-all hover:opacity-90 disabled:opacity-40"
                 style={{ backgroundColor: ink, color: gold }}
               >
-                {loginLoading ? 'Проверяем…' : 'Войти'}
+                {loginLoading ? tr('Проверяем…', 'Checking…') : tr('Войти', 'Sign in')}
               </button>
             </form>
             <p className="mt-4 text-center text-xs" style={{ color: muted }}>
-              Ещё нет подписки?{' '}
-              <Link to={localePath('/subscribe', RU)} className="underline" style={{ color: goldDeep }}>
-                Оформить
+              {tr('Ещё нет подписки?', 'No subscription yet?')}{' '}
+              <Link to={subscribePath} className="underline" style={{ color: goldDeep }}>
+                {tr('Оформить', 'Subscribe')}
               </Link>
             </p>
           </div>
@@ -247,7 +258,17 @@ export function AccountRoute() {
   }
 
   const limitReached = me.dailyLimit > 0 && me.usedToday >= me.dailyLimit
-  const statusLabel = me.canceled ? 'отменена' : me.status === 'past_due' ? 'проблема с оплатой' : 'активна'
+  const statusLabel = me.canceled
+    ? tr('отменена', 'canceled')
+    : me.status === 'past_due'
+      ? tr('проблема с оплатой', 'payment issue')
+      : tr('активна', 'active')
+  const price = me.price ?? me.priceRub
+  const currency = me.currency ?? 'RUB'
+  const orderStatusLabel = (status: string) => {
+    const pair = ORDER_STATUS[status] ?? [status, status]
+    return tr(pair[0], pair[1])
+  }
 
   return (
     <CabinetPage me={me} onLogout={logout}>
@@ -256,7 +277,9 @@ export function AccountRoute() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl" style={serif}>
-              {me.name ? `Здравствуйте, ${me.name}!` : 'Ваша подписка'}
+              {me.name
+                ? tr(`Здравствуйте, ${me.name}!`, `Hello, ${me.name}!`)
+                : tr('Ваша подписка', 'Your subscription')}
             </h1>
             <p className="mt-1 text-sm" style={{ color: '#e7ddce' }}>
               {me.email}
@@ -277,23 +300,23 @@ export function AccountRoute() {
             строка списания переносилась и разъезжалась с соседней. */}
         <div className="mt-5 space-y-1.5 text-sm" style={{ color: '#e7ddce' }}>
           <div>
-            {me.canceled ? 'Доступ до' : 'Оплачено до'}:{' '}
-            <span className="font-bold text-white">{formatSubDate(me.accessUntil)}</span>
+            {me.canceled ? tr('Доступ до', 'Access until') : tr('Оплачено до', 'Paid until')}:{' '}
+            <span className="font-bold text-white">{formatSubDate(me.accessUntil, lang)}</span>
           </div>
           {!me.canceled && me.nextChargeAt && (
             <div>
-              Следующее списание {me.priceRub.toLocaleString('ru-RU')} ₽:{' '}
+              {tr('Следующее списание', 'Next charge')} {formatMoney(price, currency)}:{' '}
               <span className="whitespace-nowrap font-bold text-white">
-                {formatSubDate(me.nextChargeAt)}
+                {formatSubDate(me.nextChargeAt, lang)}
               </span>
             </div>
           )}
         </div>
         {me.canceled ? (
           <p className="mt-4 text-sm" style={{ color: '#d9cabb' }}>
-            Списаний больше не будет. Когда доступ закончится, подписку можно{' '}
-            <Link to={localePath('/subscribe', RU)} className="underline" style={{ color: gold }}>
-              оформить заново
+            {tr('Списаний больше не будет. Когда доступ закончится, подписку можно', 'No more charges. When access ends, you can')}{' '}
+            <Link to={subscribePath} className="underline" style={{ color: gold }}>
+              {tr('оформить заново', 'subscribe again')}
             </Link>
             .
           </p>
@@ -304,7 +327,7 @@ export function AccountRoute() {
             className="mt-4 text-xs underline transition hover:opacity-70"
             style={{ color: '#d9cabb' }}
           >
-            Отменить подписку
+            {tr('Отменить подписку', 'Cancel subscription')}
           </button>
         )}
       </div>
@@ -312,9 +335,11 @@ export function AccountRoute() {
       {cancelOpen && (
         <div className="mt-3 rounded-3xl bg-white p-6 shadow-md">
           <p className="text-sm" style={{ color: muted }}>
-            Отменить подписку? Автосписания прекратятся, сохранённая карта отвяжется. Доступ и
-            все песни останутся до{' '}
-            <strong style={{ color: ink }}>{formatSubDate(me.accessUntil)}</strong>.
+            {tr(
+              'Отменить подписку? Автосписания прекратятся. Доступ и все песни останутся до',
+              'Cancel your subscription? Automatic charges will stop. Access and all your songs remain until',
+            )}{' '}
+            <strong style={{ color: ink }}>{formatSubDate(me.accessUntil, lang)}</strong>.
           </p>
           <div className="mt-4 flex gap-3">
             <button
@@ -324,7 +349,7 @@ export function AccountRoute() {
               className="rounded-xl px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
               style={{ backgroundColor: '#8a2121' }}
             >
-              {cancelLoading ? 'Отменяем…' : 'Да, отменить'}
+              {cancelLoading ? tr('Отменяем…', 'Canceling…') : tr('Да, отменить', 'Yes, cancel')}
             </button>
             <button
               type="button"
@@ -332,7 +357,7 @@ export function AccountRoute() {
               className="rounded-xl border px-5 py-2.5 text-sm font-bold"
               style={{ borderColor: '#ddd0b8', color: muted }}
             >
-              Оставить подписку
+              {tr('Оставить подписку', 'Keep subscription')}
             </button>
           </div>
         </div>
@@ -341,16 +366,16 @@ export function AccountRoute() {
       {/* Новая песня */}
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl" style={serif}>
-          Мои песни
+          {tr('Мои песни', 'My songs')}
         </h2>
         <div className="flex items-center gap-3">
           {me.dailyLimit > 0 && (
             <span className="text-xs" style={{ color: muted }}>
-              сегодня {me.usedToday} из {me.dailyLimit}
+              {tr('сегодня', 'today')} {me.usedToday} {tr('из', 'of')} {me.dailyLimit}
             </span>
           )}
           <Link
-            to={localePath('/account/new', RU)}
+            to={localePath('/account/new', lang)}
             aria-disabled={limitReached}
             onClick={(e) => limitReached && e.preventDefault()}
             className="inline-flex items-center gap-1.5 rounded-xl px-5 py-3 text-sm font-black transition-all hover:opacity-90"
@@ -361,13 +386,16 @@ export function AccountRoute() {
             }
           >
             <Plus className="h-4 w-4" />
-            Новая песня
+            {tr('Новая песня', 'New song')}
           </Link>
         </div>
       </div>
       {limitReached && (
         <p className="mt-2 text-xs" style={{ color: muted }}>
-          Суточный лимит исчерпан — новые песни станут доступны в течение суток.
+          {tr(
+            'Суточный лимит исчерпан — новые песни станут доступны в течение суток.',
+            'Daily limit reached — new songs will be available within 24 hours.',
+          )}
         </p>
       )}
 
@@ -376,22 +404,24 @@ export function AccountRoute() {
           <div className="rounded-3xl bg-white p-8 text-center shadow-md">
             <Music className="mx-auto h-8 w-8" style={{ color: '#ddd0b8' }} />
             <p className="mt-3 text-sm" style={{ color: muted }}>
-              Песен пока нет — создайте первую!
+              {tr('Песен пока нет — создайте первую!', 'No songs yet — create your first one!')}
             </p>
           </div>
         )}
         {orders.map((o) => (
           <Link
             key={o.orderId}
-            to={localePath(`/order/${encodeURIComponent(o.orderId)}`, RU)}
+            to={localePath(`/order/${encodeURIComponent(o.orderId)}`, lang)}
             className="flex items-center justify-between gap-4 rounded-3xl bg-white p-5 shadow-md transition hover:shadow-lg"
           >
             <div className="min-w-0">
               <div className="truncate font-bold">
-                {o.recipientName ? `Для: ${o.recipientName}` : 'Песня'}
+                {o.recipientName
+                  ? tr(`Для: ${o.recipientName}`, `For: ${o.recipientName}`)
+                  : tr('Песня', 'Song')}
               </div>
               <div className="mt-0.5 text-xs" style={{ color: muted }}>
-                {formatSubDate(o.createdAt)}
+                {formatSubDate(o.createdAt, lang)}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -401,7 +431,7 @@ export function AccountRoute() {
                   className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
                   style={{ backgroundColor: '#f0ddc9', color: muted }}
                 >
-                  демо
+                  {tr('демо', 'demo')}
                 </span>
               )}
               <span
@@ -412,7 +442,7 @@ export function AccountRoute() {
                     : { backgroundColor: '#f0ddc9', color: muted }
                 }
               >
-                {ORDER_STATUS[o.status] ?? o.status}
+                {orderStatusLabel(o.status)}
               </span>
             </div>
           </Link>

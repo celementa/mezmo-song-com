@@ -184,7 +184,7 @@ func (s *Server) handleSubscriptionStart(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	sub, err := store.UpsertPendingSubscription(ctx, s.DB, email, body.Name)
+	sub, err := store.UpsertPendingSubscriptionLang(ctx, s.DB, email, body.Name, requestLang(r).String)
 	if err == store.ErrSubscriptionActive {
 		writeJSON(w, 409, map[string]string{"error": "already_active"})
 		return
@@ -384,6 +384,8 @@ func (s *Server) handleSubscriptionStatus(w http.ResponseWriter, r *http.Request
 		"active":      sub.HasAccess(time.Now().UTC()) && sub.Status == store.SubActive,
 		"accessUntil": nullStr(sub.AccessUntil.String),
 		"price":       subPrice(sub),
+		"currency":    sub.SubCurrency(),
+		"language":    sub.SubLanguage(),
 	})
 }
 
@@ -425,7 +427,7 @@ func (s *Server) handleAdminSubscriptionGift(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, 409, map[string]string{"error": "already_had_subscription", "status": prev.Status})
 		return
 	}
-	sub, err := store.UpsertPendingSubscription(ctx, s.DB, email, name)
+	sub, err := store.UpsertPendingSubscriptionLang(ctx, s.DB, email, name, o.Lang())
 	if errors.Is(err, store.ErrSubscriptionActive) {
 		writeJSON(w, 409, map[string]string{"error": "already_active"})
 		return
@@ -552,6 +554,9 @@ func (s *Server) handleSubscriptionMe(w http.ResponseWriter, r *http.Request) {
 		"nextChargeAt": nullStr(sub.NextChargeAt.String),
 		"canceled":     sub.Status == store.SubCanceled,
 		"priceRub":     subPrice(*sub),
+		"price":        subPrice(*sub),
+		"currency":     sub.SubCurrency(),
+		"language":     sub.SubLanguage(),
 		"dailyLimit":   limit,
 		"usedToday":    used,
 	})
@@ -709,6 +714,32 @@ func (s *Server) handleSubscriptionCancel(w http.ResponseWriter, r *http.Request
 	} else {
 		writeJSON(w, 401, map[string]string{"error": "unauthorized"})
 		return
+	}
+
+	sub, err := store.GetSubscription(ctx, s.DB, subID)
+	if err != nil {
+		log.Printf("[sub] cancel sub=%s: get err=%v", subID, err)
+		writeJSON(w, 500, map[string]string{"error": "db"})
+		return
+	}
+	// Stripe ведёт списания у себя: локальная отметка без его API оставила бы
+	// подписку живой, и человек продолжал бы платить после «отмены». Отменяем
+	// в Stripe ДО локального статуса; отказ API — 502 и ничего не меняем.
+	if sub.Provider.String == ProviderStripe && sub.StripeSubscriptionID.String != "" {
+		err := s.stripe().CancelSubscription(sub.StripeSubscriptionID.String)
+		var apiErr *payment.StripeAPIError
+		switch {
+		case err == nil:
+			log.Printf("[sub] cancel sub=%s: stripe %s cancel_at_period_end", subID, sub.StripeSubscriptionID.String)
+		case errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound:
+			// В Stripe её уже нет (удалена вручную/по вебхуку) — локальную
+			// отметку всё равно ставим, иначе кабинет покажет живую подписку.
+			log.Printf("[sub] cancel sub=%s: stripe %s уже удалена", subID, sub.StripeSubscriptionID.String)
+		default:
+			log.Printf("[sub] cancel sub=%s: stripe %s err=%v — локальную отмену не делаем", subID, sub.StripeSubscriptionID.String, err)
+			writeJSON(w, 502, map[string]string{"error": "payment_gateway"})
+			return
+		}
 	}
 
 	email, accessUntil, ok, err := store.CancelSubscription(ctx, s.DB, subID)
@@ -1026,15 +1057,26 @@ func (s *Server) rememberSubscriptionPayment(ctx context.Context, subID, payment
 
 // --- Письма ---
 
-// Ссылки подписки ведут сразу на /ru/...: страницы подписки есть только на
-// русском, а инлайн-редирект в frontend/index.html отправляет беспрефиксный
-// адрес на /en/... при куке mezmo_lang=en — это 404.
-func (s *Server) subAccountURL() string {
-	return strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/ru/account"
+// Ссылки подписки ведут на языковую версию, на которой она оформлена. Язык
+// зафиксирован в subscriptions.language: беспрефиксный адрес инлайн-редирект
+// frontend/index.html уводит на /en, поэтому префикс ставим явно.
+func (s *Server) subAccountURL(sub store.Subscription) string {
+	return strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/" + sub.SubLanguage() + "/account"
 }
 
 func (s *Server) subCancelURL(sub store.Subscription) string {
-	return strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/ru/subscription/cancel?t=" + sub.CancelToken
+	return strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/" + sub.SubLanguage() + "/subscription/cancel?t=" + sub.CancelToken
+}
+
+// subSubscribeURL — «оформить/продлить» на языке подписки. RU-страница принимает
+// sid/email и открывает цену этой подписки; отдельной EN-страницы подписки нет —
+// ведём в воронку на плечо с экраном «подписка / разовая».
+func (s *Server) subSubscribeURL(sub store.Subscription) string {
+	base := strings.TrimSuffix(s.Config.PublicAppURL, "/")
+	if sub.SubLanguage() == store.LangEN {
+		return base + "/en/config?arm=" + ArmCom500750s
+	}
+	return base + "/ru/subscribe?sid=" + url.QueryEscape(sub.ID) + "&email=" + url.QueryEscape(sub.Email)
 }
 
 // sendSubscriptionMail — письмо подписчику. errEmailDisabled означает, что
@@ -1046,16 +1088,17 @@ func (s *Server) sendSubscriptionMail(kind string, sub store.Subscription, subje
 		return errors.New("smtp not configured")
 	}
 	vars := map[string]string{
-		"account_url":      s.subAccountURL(),
+		"account_url":      s.subAccountURL(sub),
 		"cancel_url":       s.subCancelURL(sub),
 		"price":            strconv.Itoa(subPrice(sub)),
-		"next_charge_date": fmtRuDate(sub.NextChargeAt.String),
-		"access_until":     fmtRuDate(sub.AccessUntil.String),
+		"price_label":      subPriceLabel(sub),
+		"next_charge_date": fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String),
+		"access_until":     fmtSubDate(sub.SubLanguage(), sub.AccessUntil.String),
 	}
 	for name, v := range extra {
 		vars[name] = v
 	}
-	if err := s.sendEmail(context.Background(), kind, emailTarget{SubscriptionID: sub.ID}, sub.Email, subject, body, vars); err != nil {
+	if err := s.sendEmail(context.Background(), kind, emailTarget{SubscriptionID: sub.ID, Language: sub.SubLanguage()}, sub.Email, subject, body, vars); err != nil {
 		log.Printf("[sub] mail %q to=%s err=%v", subject, sub.Email, err)
 		return err
 	}
@@ -1063,88 +1106,190 @@ func (s *Server) sendSubscriptionMail(kind string, sub store.Subscription, subje
 	return nil
 }
 
-func fmtRuDate(rfc3339 string) string {
+// subPriceLabel — цена подписки для писем: $15 у Stripe, 15 ₽ у ЮKassa.
+func subPriceLabel(sub store.Subscription) string {
+	if sub.SubCurrency() == "USD" {
+		return "$" + strconv.Itoa(subPrice(sub))
+	}
+	return strconv.Itoa(subPrice(sub)) + " ₽"
+}
+
+// fmtSubDate — дата подписки на языке письма.
+func fmtSubDate(lang, rfc3339 string) string {
 	t, err := time.Parse(time.RFC3339, rfc3339)
 	if err != nil {
 		return rfc3339
 	}
+	if store.NormalizeLang(lang) == store.LangEN {
+		return t.Format("January 2, 2006")
+	}
 	return t.Format("02.01.2006")
 }
 
+// subMailTexts — тема и тело письма на языке подписки. Английские тексты
+// пишем здесь же, рядом с русскими: так расхождение видно в диффе.
+func subMailTexts(sub store.Subscription, ruSubject, enSubject, ruBody, enBody string) (string, string) {
+	if sub.SubLanguage() == store.LangEN {
+		return enSubject, enBody
+	}
+	return ruSubject, ruBody
+}
+
 func (s *Server) sendSubscriptionGiftEmail(sub store.Subscription) error {
-	renewURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/ru/subscribe?sid=" + url.QueryEscape(sub.ID) + "&email=" + url.QueryEscape(sub.Email)
-	return s.sendSubscriptionMail(emailSubGift, sub, "Дарим вам месяц безлимита песен",
-		"Здравствуйте!\n\nСпасибо за заказ песни. Мы дарим вам месяц безлимита: до "+fmtRuDate(sub.AccessUntil.String)+
+	renewURL := s.subSubscribeURL(sub)
+	ruSubject, ruBody := "Дарим вам месяц безлимита песен",
+		"Здравствуйте!\n\nСпасибо за заказ песни. Мы дарим вам месяц безлимита: до "+fmtSubDate(sub.SubLanguage(), sub.AccessUntil.String)+
 			" можно создавать сколько угодно песен без доплат. Карту мы не привязывали — списаний не будет.\n\n"+
-			"Кабинет (вход по этому email): "+s.subAccountURL()+
-			"\n\nПонравится — продлите безлимит за "+rubLabel(subPrice(sub))+" в месяц: "+renewURL+"\n",
-		map[string]string{"renew_url": renewURL})
+			"Кабинет (вход по этому email): "+s.subAccountURL(sub)+
+			"\n\nПонравится — продлите безлимит за "+subPriceLabel(sub)+" в месяц: "+renewURL+"\n"
+	enSubject, enBody := "A free month of unlimited songs",
+		"Hi!\n\nThank you for your order. We're giving you a month of unlimited songs: until "+fmtSubDate(sub.SubLanguage(), sub.AccessUntil.String)+
+			" you can create as many songs as you like at no extra cost. We did not save a card, so there will be no charges.\n\n"+
+			"Your account (sign in with this email): "+s.subAccountURL(sub)+
+			"\n\nIf you like it, continue unlimited for "+subPriceLabel(sub)+" per month: "+renewURL+"\n"
+	subject, body := subMailTexts(sub, ruSubject, enSubject, ruBody, enBody)
+	return s.sendSubscriptionMail(emailSubGift, sub, subject, body, map[string]string{"renew_url": renewURL})
 }
 
 func (s *Server) sendSubscriptionCancelLinkEmail(sub store.Subscription) {
-	s.sendSubscriptionMail(emailSubCancelLink, sub, "Отмена подписки",
-		fmt.Sprintf(`Вы запросили отмену подписки на персональные песни.
+	ruSubject, ruBody := "Отмена подписки", fmt.Sprintf(`Вы запросили отмену подписки на персональные песни.
 
 Чтобы подтвердить отмену, откройте страницу и нажмите кнопку:
 %s
 
 Если вы не запрашивали отмену — просто проигнорируйте это письмо,
-подписка продолжит действовать.`, s.subCancelURL(sub)), nil)
+подписка продолжит действовать.`, s.subCancelURL(sub))
+	enSubject, enBody := "Cancel your subscription", fmt.Sprintf(`You asked to cancel your subscription to custom songs.
+
+To confirm, open the page and press the button:
+%s
+
+If you didn't request this, just ignore this email — your subscription will continue.`, s.subCancelURL(sub))
+	subject, body := subMailTexts(sub, ruSubject, enSubject, ruBody, enBody)
+	s.sendSubscriptionMail(emailSubCancelLink, sub, subject, body, nil)
 }
 
 func (s *Server) sendSubscriptionWelcomeEmail(sub store.Subscription) {
-	s.sendSubscriptionMail(emailSubWelcome, sub, "Подписка оформлена",
-		fmt.Sprintf(`Спасибо! Подписка на персональные песни активна.
+	// Планировщик наши напоминания Stripe-подписке не шлёт: продлениями и
+	// чеками занимается Stripe. Обещать письмо, которого не будет, нельзя.
+	reminderRU, reminderEN := "Мы напомним письмом за 3 дня.", "We'll remind you 3 days before."
+	if sub.Provider.String == ProviderStripe {
+		reminderRU, reminderEN = "Списание проведёт Stripe по сохранённой карте.", "Stripe will charge the saved card."
+	}
+	ruSubject, ruBody := "Подписка оформлена", fmt.Sprintf(`Спасибо! Подписка на персональные песни активна.
 
 Личный кабинет (вход по этому email): %s
-Следующее списание %d ₽ — %s. Мы напомним письмом за 3 дня.
+Следующее списание %s — %s. %s
 
 Отменить подписку можно в любой момент:
 %s
 После отмены доступ сохранится до конца оплаченного периода.`,
-			s.subAccountURL(), subPrice(sub), fmtRuDate(sub.NextChargeAt.String), s.subCancelURL(sub)),
-		map[string]string{"trial": ""})
+		s.subAccountURL(sub), subPriceLabel(sub), fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String), reminderRU, s.subCancelURL(sub))
+	enSubject, enBody := "Your subscription is active", fmt.Sprintf(`Thank you! Your subscription to custom songs is active.
+
+Your account (sign in with this email): %s
+Next charge: %s on %s. %s
+
+You can cancel anytime:
+%s
+After cancellation, access remains until the end of the paid period.`,
+		s.subAccountURL(sub), subPriceLabel(sub), fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String), reminderEN, s.subCancelURL(sub))
+	subject, body := subMailTexts(sub, ruSubject, enSubject, ruBody, enBody)
+	s.sendSubscriptionMail(emailSubWelcome, sub, subject, body, map[string]string{"trial": ""})
 }
 
 func (s *Server) sendSubscriptionChargedEmail(sub store.Subscription) {
-	s.sendSubscriptionMail(emailSubCharged, sub, "Подписка продлена",
-		fmt.Sprintf(`Подписка на персональные песни продлена, списано %d ₽.
+	ruSubject, ruBody := "Подписка продлена", fmt.Sprintf(`Подписка на персональные песни продлена, списано %s.
 
 Личный кабинет: %s
 Следующее списание — %s.
 
 Отменить подписку: %s`,
-			subPrice(sub), s.subAccountURL(), fmtRuDate(sub.NextChargeAt.String), s.subCancelURL(sub)), nil)
+		subPriceLabel(sub), s.subAccountURL(sub), fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String), s.subCancelURL(sub))
+	enSubject, enBody := "Subscription renewed", fmt.Sprintf(`Your subscription to custom songs has been renewed. Charged %s.
+
+Your account: %s
+Next charge: %s.
+
+Cancel: %s`,
+		subPriceLabel(sub), s.subAccountURL(sub), fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String), s.subCancelURL(sub))
+	subject, body := subMailTexts(sub, ruSubject, enSubject, ruBody, enBody)
+	s.sendSubscriptionMail(emailSubCharged, sub, subject, body, nil)
 }
 
 func (s *Server) sendSubscriptionReminderEmail(sub store.Subscription) error {
-	return s.sendSubscriptionMail(emailSubReminder, sub, "Скоро списание по подписке",
-		fmt.Sprintf(`Напоминаем: %s спишется %d ₽ за подписку на персональные песни.
+	ruSubject, ruBody := "Скоро списание по подписке", fmt.Sprintf(`Напоминаем: %s спишется %s за подписку на персональные песни.
 
 Если подписка больше не нужна, отмените её до списания:
 %s
 
 Личный кабинет: %s`,
-			fmtRuDate(sub.NextChargeAt.String), subPrice(sub), s.subCancelURL(sub), s.subAccountURL()), nil)
+		fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String), subPriceLabel(sub), s.subCancelURL(sub), s.subAccountURL(sub))
+	enSubject, enBody := "Upcoming subscription charge", fmt.Sprintf(`A reminder: %s will be charged for your subscription to custom songs on %s.
+
+If you no longer need it, cancel before the charge:
+%s
+
+Your account: %s`,
+		subPriceLabel(sub), fmtSubDate(sub.SubLanguage(), sub.NextChargeAt.String), s.subCancelURL(sub), s.subAccountURL(sub))
+	subject, body := subMailTexts(sub, ruSubject, enSubject, ruBody, enBody)
+	return s.sendSubscriptionMail(emailSubReminder, sub, subject, body, nil)
 }
 
 func (s *Server) sendSubscriptionChargeFailedEmail(sub store.Subscription) {
-	s.sendSubscriptionMail(emailSubChargeFailed, sub, "Не удалось продлить подписку",
-		fmt.Sprintf(`Списание %d ₽ за подписку не прошло — банк отклонил платёж.
+	ruSubject, ruBody := "Не удалось продлить подписку", fmt.Sprintf(`Списание %s за подписку не прошло — банк отклонил платёж.
 
 Мы повторим попытку через несколько дней. Проверьте карту: доступ к кабинету
 действует до %s, после этого подписка закроется.
 
 Отменить подписку: %s`,
-			subPrice(sub), fmtRuDate(sub.AccessUntil.String), s.subCancelURL(sub)), nil)
+		subPriceLabel(sub), fmtSubDate(sub.SubLanguage(), sub.AccessUntil.String), s.subCancelURL(sub))
+	enSubject, enBody := "We couldn't renew your subscription", fmt.Sprintf(`The %s charge for your subscription failed — your bank declined the payment.
+
+We'll retry in a few days. Please check your card: access remains until %s, after that the subscription will end.
+
+Cancel: %s`,
+		subPriceLabel(sub), fmtSubDate(sub.SubLanguage(), sub.AccessUntil.String), s.subCancelURL(sub))
+	subject, body := subMailTexts(sub, ruSubject, enSubject, ruBody, enBody)
+	s.sendSubscriptionMail(emailSubChargeFailed, sub, subject, body, nil)
 }
 
 func (s *Server) sendSubscriptionExpiredEmail(sub store.Subscription) {
-	subscribeURL := strings.TrimSuffix(s.Config.PublicAppURL, "/") + "/ru/subscribe"
-	s.sendSubscriptionMail(emailSubExpired, sub, "Подписка завершена",
-		fmt.Sprintf(`Продлить подписку не получилось, и она завершена. Все созданные песни
+	subscribeURL := s.subSubscribeURL(sub)
+	ruSubject, ruBody := "Подписка завершена", fmt.Sprintf(`Продлить подписку не получилось, и она завершена. Все созданные песни
 остаются доступны по ссылкам из писем.
 
-Оформить подписку заново: %s`, subscribeURL),
-		map[string]string{"subscribe_url": subscribeURL})
+Оформить подписку заново: %s`, subscribeURL)
+	enSubject, enBody := "Subscription ended", fmt.Sprintf(`We couldn't renew your subscription, so it has ended. All songs you created
+remain available via the links in your emails.
+
+Subscribe again: %s`, subscribeURL)
+	subject, body := subMailTexts(sub, ruSubject, enSubject, ruBody, enBody)
+	s.sendSubscriptionMail(emailSubExpired, sub, subject, body, map[string]string{"subscribe_url": subscribeURL})
+}
+
+// sendStripeSubscriptionWelcome — welcome после активации Stripe. Заявка
+// ClaimSubscriptionWelcome атомарная: повторный checkout.session.completed
+// (Stripe ретраит вебхуки) не пришлёт второе письмо.
+func (s *Server) sendStripeSubscriptionWelcome(ctx context.Context, subID string, trial bool) {
+	claimed, err := store.ClaimSubscriptionWelcome(ctx, s.DB, subID)
+	if err != nil {
+		log.Printf("[sub] welcome sub=%s: claim err=%v", subID, err)
+		return
+	}
+	if !claimed {
+		return
+	}
+	sub, err := store.GetSubscription(ctx, s.DB, subID)
+	if err != nil {
+		log.Printf("[sub] welcome sub=%s: get err=%v", subID, err)
+		return
+	}
+	go func() {
+		if trial {
+			s.sendSubscriptionTrialEmail(sub)
+			return
+		}
+		s.sendSubscriptionWelcomeEmail(sub)
+	}()
 }
