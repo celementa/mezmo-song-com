@@ -15,7 +15,7 @@ import { ShieldCheck } from 'lucide-react'
 
 import { StepShell } from '@/routes/create/StepShell'
 import { formatMoney, type OrderCurrency } from '@/lib/currency'
-import { localePath, useTr } from '@/lib/lang'
+import { intlLocale, localePath, useLang, useTr } from '@/lib/lang'
 import { legalDocPath, legalEntityForProvider, type LegalEntity } from '@/lib/site'
 import { PaymentLogos } from '@/components/landing/PaymentLogos'
 import { saveStripeSession } from './stripeSession'
@@ -42,6 +42,10 @@ export type PaymentStart = {
   /** Оплата не нужна: цена 0 или mock-режим стенда. */
   paid?: boolean
   activated?: boolean
+  /** Подписка на этот email уже была: песня вошла в неё без оплаты. */
+  existing?: boolean
+  accessUntil?: string | null
+  orderId?: string
 }
 
 /** Заказ уже оплачен — уведомление UnitPay просто не доехало до сервера. */
@@ -106,6 +110,7 @@ export function UnitPayCheckout({
   onPaid: () => void
 }) {
   const tr = useTr()
+  const lang = useLang()
   const entity = legalEntity ?? legalEntityForProvider(provider)
   const money = (value: number) => formatMoney(value, currency) + (perMonth ? tr('/мес', '/mo') : '')
   // Две отдельные галочки: банк требует явное подтверждение оферты, а обработка
@@ -115,6 +120,9 @@ export function UnitPayCheckout({
   const [dataAgreed, setDataAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Ответ «подписка уже активна»: вместо молчаливого перехода — экран с
+  // объяснением, почему платить не нужно, и ссылкой на песню.
+  const [existingSub, setExistingSub] = useState<{ accessUntil: string | null; orderId: string } | null>(null)
 
   const pay = async () => {
     if (!offerAgreed) {
@@ -170,6 +178,11 @@ export function UnitPayCheckout({
         window.location.assign(res.confirmationUrl)
         return
       }
+      if (res.existing && res.orderId) {
+        setExistingSub({ accessUntil: res.accessUntil ?? null, orderId: res.orderId })
+        setBusy(false)
+        return
+      }
       if (res.paid || res.activated) {
         onPaid()
         return
@@ -187,6 +200,33 @@ export function UnitPayCheckout({
   }
 
   const linkClass = 'font-semibold text-[#8a6621] underline underline-offset-2 hover:text-[#151210]'
+
+  if (existingSub) {
+    const until = existingSub.accessUntil
+      ? new Date(existingSub.accessUntil).toLocaleDateString(intlLocale(lang), { day: 'numeric', month: 'long' })
+      : null
+    const songPath = localePath(`/order/${encodeURIComponent(existingSub.orderId)}`)
+    return (
+      <StepShell
+        {...shell}
+        eyebrow={tr('Подписка', 'Subscription')}
+        headline={
+          until
+            ? tr(`У вас уже есть подписка до ${until}`, `You already have a subscription until ${until}`)
+            : tr('У вас уже есть подписка', 'You already have a subscription')
+        }
+        subhead={tr('Эта песня входит в неё — платить не нужно.', 'This song is included — no payment needed.')}
+        hideNav
+      >
+        <p className="text-sm text-[#3b352f]">
+          {tr('Песня будет готова здесь:', 'Your song will be ready here:')}{' '}
+          <Link to={songPath} className={linkClass}>
+            {tr('открыть песню', 'open song')}
+          </Link>
+        </p>
+      </StepShell>
+    )
+  }
 
   return (
     <StepShell

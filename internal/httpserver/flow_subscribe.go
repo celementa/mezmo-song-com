@@ -171,7 +171,16 @@ func (s *Server) handleOrderSubscribeInstead(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		s.fulfillOrderViaSubscription(ctx, id, existing.ID)
-		writeJSON(w, 200, map[string]any{"sid": existing.ID, "activated": true, "orderId": publicOrderRef(s.Config.WebhookSecret, id)})
+		// existing и accessUntil — для экрана «у вас уже есть подписка»: без
+		// него человек выбирал подписку и молча попадал на страницу заказа, не
+		// понимая, почему его не попросили заплатить.
+		writeJSON(w, 200, map[string]any{
+			"sid":         existing.ID,
+			"activated":   true,
+			"existing":    true,
+			"accessUntil": nullStr(existing.AccessUntil.String),
+			"orderId":     publicOrderRef(s.Config.WebhookSecret, id),
+		})
 		return
 	}
 	if err != nil {

@@ -823,3 +823,34 @@ func TestSubscriptionStartRepeatOnCanceledLiveAccess(t *testing.T) {
 		t.Fatalf("active sub: code=%d body=%s, want 409 already_active", rec.Code, rec.Body.String())
 	}
 }
+
+// Подписка на email уже активна: «подписка вместо разовой» не берёт денег, а
+// ответ несёт existing и дату доступа — по ним шаг оплаты объясняет человеку,
+// почему его не попросили заплатить, вместо молчаливого перехода на заказ.
+func TestSubscribeInsteadExistingSubscription(t *testing.T) {
+	s := refundTestServer(t)
+	seedArmOrder(t, s, "ord_inst_exist", "sub@b.c", ArmCom500750s, "")
+	if _, err := s.DB.Exec(`UPDATE orders SET payment_status = ? WHERE id = ?`, store.PaymentPending, "ord_inst_exist"); err != nil {
+		t.Fatal(err)
+	}
+	sub := activeSubForJobs(t, s, "sub@b.c", "pm_exist", 72*time.Hour)
+
+	ref := publicOrderRef(s.Config.WebhookSecret, "ord_inst_exist")
+	req := httptest.NewRequest("POST", "/api/orders/"+ref+"/subscribe-instead", bytes.NewReader([]byte(`{}`)))
+	req.SetPathValue("id", ref)
+	rec := httptest.NewRecorder()
+	s.handleOrderSubscribeInstead(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["existing"] != true || got["activated"] != true || got["orderId"] != ref {
+		t.Fatalf("body=%v, want existing/activated/orderId", got)
+	}
+	if got["accessUntil"] != sub.AccessUntil.String {
+		t.Fatalf("accessUntil=%v, want %s", got["accessUntil"], sub.AccessUntil.String)
+	}
+}
