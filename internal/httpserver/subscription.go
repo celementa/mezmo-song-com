@@ -308,19 +308,26 @@ func (s *Server) handleAdminSubscriptionPayments(w http.ResponseWriter, r *http.
 	}
 	out := make([]map[string]any, 0, len(payments))
 	total := 0
+	// Рубли ЮKassa и доллары Stripe в одну сумму не складываются: total — по
+	// рублям (как раньше), totals — итог по каждой валюте.
+	totals := map[string]int{}
 	for _, p := range payments {
-		total += p.AmountRub()
+		if p.Currency == "RUB" {
+			total += p.AmountRub()
+		}
+		totals[p.Currency] += p.AmountRub()
 		out = append(out, map[string]any{
 			"paymentId":      p.PaymentID,
 			"subscriptionId": p.SubscriptionID,
 			"createdAt":      p.CreatedAt.UTC().Format(time.RFC3339),
 			"email":          p.Email,
 			"amount":         p.AmountRub(),
+			"currency":       p.Currency,
 			"flow":           p.Flow,
 			"subStatus":      p.SubStatus,
 		})
 	}
-	writeJSON(w, 200, map[string]any{"days": days, "since": since, "total": total, "payments": out})
+	writeJSON(w, 200, map[string]any{"days": days, "since": since, "total": total, "totals": totals, "payments": out})
 }
 
 // handleAdminSubscriptionRebillNow — «списать сейчас»: переносит плановую дату

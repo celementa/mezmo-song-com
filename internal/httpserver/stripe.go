@@ -221,25 +221,76 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
-// handleStripeInvoicePaid продлевает доступ по продлению подписки. Это НЕ
-// покупка: конверсию не шлём (требование аналитики), поэтому здесь только
-// access_until.
+// stripeInvoice — нужная часть объекта invoice. Ссылка на подписку в разных
+// версиях API лежит в разных местах: subscription (до 2025-03-31) или
+// parent.subscription_details.subscription (после); версия не закреплена.
+type stripeInvoice struct {
+	ID            string `json:"id"`
+	Subscription  string `json:"subscription"`
+	AmountPaid    int64  `json:"amount_paid"` // в центах
+	BillingReason string `json:"billing_reason"`
+	Parent        struct {
+		SubscriptionDetails struct {
+			Subscription string `json:"subscription"`
+		} `json:"subscription_details"`
+	} `json:"parent"`
+}
+
+func (inv stripeInvoice) subscriptionID() string {
+	if inv.Subscription != "" {
+		return inv.Subscription
+	}
+	return inv.Parent.SubscriptionDetails.Subscription
+}
+
+// handleStripeInvoicePaid продлевает доступ по продлению подписки и записывает
+// списание в «Платежи подписок» админки. Это НЕ покупка: конверсию не шлём
+// (требование аналитики).
 func (s *Server) handleStripeInvoicePaid(ctx context.Context, raw json.RawMessage) {
-	var invoice struct {
-		Subscription string `json:"subscription"`
-	}
-	if err := json.Unmarshal(raw, &invoice); err != nil || invoice.Subscription == "" {
+	var invoice stripeInvoice
+	if err := json.Unmarshal(raw, &invoice); err != nil {
 		return
 	}
-	sub, err := s.stripe().GetSubscription(invoice.Subscription)
+	stripeSubID := invoice.subscriptionID()
+	if stripeSubID == "" {
+		log.Printf("[sub] stripe invoice %s: без подписки — пропускаем", invoice.ID)
+		return
+	}
+	sub, err := s.stripe().GetSubscription(stripeSubID)
 	if err != nil {
-		log.Printf("[sub] stripe %s: get subscription err=%v", invoice.Subscription, err)
+		log.Printf("[sub] stripe %s: get subscription err=%v", stripeSubID, err)
 		return
 	}
-	periodEnd := time.Unix(sub.CurrentPeriodEnd, 0).UTC()
-	if err := store.ExtendStripeSubscription(ctx, s.DB, sub.ID, periodEnd); err != nil {
-		log.Printf("[sub] stripe %s: extend err=%v", sub.ID, err)
+	// Без конца периода не продлеваем: time.Unix(0) закрыл бы доступ датой 1970 года.
+	if end := sub.PeriodEnd(); end > 0 {
+		if err := store.ExtendStripeSubscription(ctx, s.DB, sub.ID, time.Unix(end, 0).UTC()); err != nil {
+			log.Printf("[sub] stripe %s: extend err=%v", sub.ID, err)
+		}
+	} else {
+		log.Printf("[sub] stripe %s: нет current_period_end — доступ не продлён", sub.ID)
 	}
+	s.recordStripeInvoicePayment(ctx, invoice, stripeSubID)
+}
+
+// recordStripeInvoicePayment пишет списание Stripe в subscription_payments —
+// оттуда блок «Платежи подписок» в /admin/orders. Счёт с billing_reason
+// subscription_create не пишем: это либо trial на $0, либо первый месяц,
+// оплаченный в Checkout, а эти деньги уже стоят суммой заказа.
+func (s *Server) recordStripeInvoicePayment(ctx context.Context, invoice stripeInvoice, stripeSubID string) {
+	if invoice.ID == "" || invoice.AmountPaid <= 0 || invoice.BillingReason == "subscription_create" {
+		return
+	}
+	local, err := store.GetSubscriptionByStripeID(ctx, s.DB, stripeSubID)
+	if err != nil {
+		log.Printf("[sub] stripe %s invoice %s: локальная подписка не найдена: %v", stripeSubID, invoice.ID, err)
+		return
+	}
+	amount := fmt.Sprintf("%d.%02d", invoice.AmountPaid/100, invoice.AmountPaid%100)
+	if err := store.RecordStripeSubscriptionPayment(ctx, s.DB, local.ID, invoice.ID, amount); err != nil {
+		log.Printf("[sub] stripe %s invoice %s: record payment err=%v", stripeSubID, invoice.ID, err)
+		return
+	}
+	log.Printf("[sub] stripe %s invoice %s: списание %s записано sub=%s", stripeSubID, invoice.ID, amount, local.ID)
 }
 
 // settleStripeSession зачитывает оплату заказа. Сессия перечитывается из API:
@@ -347,8 +398,8 @@ func (s *Server) activateStripeOrderSubscription(ctx context.Context, o store.Or
 	}
 	periodEnd := store.AddCalendarMonth(time.Now().UTC())
 	if sess.Subscription != "" {
-		if remote, err := s.stripe().GetSubscription(sess.Subscription); err == nil && remote.CurrentPeriodEnd > 0 {
-			periodEnd = time.Unix(remote.CurrentPeriodEnd, 0).UTC()
+		if remote, err := s.stripe().GetSubscription(sess.Subscription); err == nil && remote.PeriodEnd() > 0 {
+			periodEnd = time.Unix(remote.PeriodEnd(), 0).UTC()
 		}
 	}
 	currency := strings.ToUpper(sess.Currency)
@@ -404,8 +455,8 @@ func (s *Server) initiateStripeUpsell(w http.ResponseWriter, r *http.Request, o 
 		})
 		if err == nil && (sub.Status == "trialing" || sub.Status == "active") {
 			periodEnd := store.AddCalendarMonth(time.Now().UTC())
-			if sub.CurrentPeriodEnd > 0 {
-				periodEnd = time.Unix(sub.CurrentPeriodEnd, 0).UTC()
+			if sub.PeriodEnd() > 0 {
+				periodEnd = time.Unix(sub.PeriodEnd(), 0).UTC()
 			}
 			if err := s.activateStripeSubscriptionDirect(r.Context(), o, sub, price, periodEnd); err != nil {
 				log.Printf("[sub] stripe upsell order=%s: direct activate err=%v", o.ID, err)

@@ -360,3 +360,82 @@ func TestStripeUpsellReusesSavedPaymentMethod(t *testing.T) {
 		t.Fatalf("subscription = provider %q id %q status %q", sub.Provider.String, sub.StripeSubscriptionID.String, sub.Status)
 	}
 }
+
+// invoice.paid в формате новых версий API (ссылка на подписку в parent, конец
+// периода в items): доступ продлевается, списание попадает в «Платежи подписок»;
+// повтор вебхука не дублирует, счёт subscription_create не пишется.
+func TestStripeInvoicePaidRecordsRenewal(t *testing.T) {
+	periodEnd := time.Now().Add(60 * 24 * time.Hour).Unix()
+	s := stripeTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/subscriptions/sub_new" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		_, _ = fmt.Fprintf(w, `{"id":"sub_new","status":"active","items":{"data":[{"current_period_end":%d}]}}`, periodEnd)
+	})
+	ctx := t.Context()
+	local, err := store.UpsertPendingSubscription(ctx, s.DB, "a@b.ru", "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ActivateStripeSubscription(ctx, s.DB, local.ID, "sub_new", "cus_1", "USD", 25, time.Now().Add(24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	send := func(invoice string) {
+		t.Helper()
+		payload := []byte(`{"id":"evt","type":"invoice.paid","data":{"object":` + invoice + `}}`)
+		rec := httptest.NewRecorder()
+		s.handleStripeWebhook(rec, stripeWebhookRequest(t, "whsec_test", payload))
+		if rec.Code != 200 {
+			t.Fatalf("webhook status = %d", rec.Code)
+		}
+	}
+	send(`{"id":"in_create","amount_paid":1500,"billing_reason":"subscription_create","parent":{"subscription_details":{"subscription":"sub_new"}}}`)
+	renewal := `{"id":"in_cycle","amount_paid":2500,"currency":"usd","billing_reason":"subscription_cycle","parent":{"subscription_details":{"subscription":"sub_new"}}}`
+	send(renewal)
+	send(renewal)
+
+	sub, err := store.GetSubscription(ctx, s.DB, local.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.AccessUntilTime().Unix() != periodEnd {
+		t.Fatalf("access_until = %v, want %v", sub.AccessUntilTime().Unix(), periodEnd)
+	}
+	payments, err := store.ListSubscriptionPaymentsSince(ctx, s.DB, "2000-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payments) != 1 {
+		t.Fatalf("платежей = %d, want 1 (только продление, без дубля)", len(payments))
+	}
+	p := payments[0]
+	if p.PaymentID != "in_cycle" || p.AmountRub() != 25 || p.Currency != "USD" || p.Flow != store.SubFlowRebill {
+		t.Fatalf("платёж = %+v", p)
+	}
+}
+
+// Старый формат: subscription на верхнем уровне invoice. Без конца периода
+// доступ не трогаем — раньше он закрывался датой 1970 года.
+func TestStripeInvoicePaidLegacyShapeWithoutPeriodKeepsAccess(t *testing.T) {
+	s := stripeTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"sub_old","status":"active"}`))
+	})
+	ctx := t.Context()
+	local, _ := store.UpsertPendingSubscription(ctx, s.DB, "a@b.ru", "A")
+	until := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
+	if _, err := store.ActivateStripeSubscription(ctx, s.DB, local.ID, "sub_old", "cus_1", "USD", 25, until); err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte(`{"id":"evt","type":"invoice.paid","data":{"object":{"id":"in_old","subscription":"sub_old","amount_paid":2500,"billing_reason":"subscription_cycle"}}}`)
+	s.handleStripeWebhook(httptest.NewRecorder(), stripeWebhookRequest(t, "whsec_test", payload))
+
+	sub, _ := store.GetSubscription(ctx, s.DB, local.ID)
+	if sub.AccessUntilTime().Unix() != until.Unix() {
+		t.Fatalf("access_until = %v, want %v", sub.AccessUntilTime(), until)
+	}
+	payments, _ := store.ListSubscriptionPaymentsSince(ctx, s.DB, "2000-01-01")
+	if len(payments) != 1 || payments[0].PaymentID != "in_old" {
+		t.Fatalf("платежи = %+v, want in_old", payments)
+	}
+}

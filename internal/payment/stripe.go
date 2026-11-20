@@ -212,6 +212,25 @@ type StripeSubscription struct {
 	CancelAt         int64             `json:"cancel_at"`
 	Metadata         map[string]string `json:"metadata"`
 	Customer         string            `json:"customer"`
+	Items            struct {
+		Data []struct {
+			CurrentPeriodEnd int64 `json:"current_period_end"`
+		} `json:"data"`
+	} `json:"items"`
+}
+
+// PeriodEnd — конец оплаченного периода (unix), 0 — неизвестен. С версии API
+// 2025-03-31 current_period_end ушёл с подписки на её позиции (items), а версия
+// API у нас не закреплена и берётся из настроек аккаунта Stripe — читаем оба места.
+func (s StripeSubscription) PeriodEnd() int64 {
+	if s.CurrentPeriodEnd > 0 {
+		return s.CurrentPeriodEnd
+	}
+	var end int64
+	for _, it := range s.Items.Data {
+		end = max(end, it.CurrentPeriodEnd)
+	}
+	return end
 }
 
 func (s Stripe) GetSubscription(id string) (StripeSubscription, error) {

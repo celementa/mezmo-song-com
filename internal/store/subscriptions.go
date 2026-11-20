@@ -443,7 +443,8 @@ func ListSubscriptionsAwaitingPayment(ctx context.Context, db *sql.DB, limit int
 type SubscriptionPayment struct {
 	PaymentID      string
 	SubscriptionID string
-	AmountValue    string // как отдала ЮKassa, "750.00"
+	AmountValue    string // как отдала ЮKassa, "750.00"; у Stripe — "25.00" в валюте подписки
+	Currency       string // валюта подписки: RUB | USD
 	Flow           string // subscription_first / subscription_rebill
 	CreatedAt      time.Time
 	Email          string
@@ -487,7 +488,7 @@ func PaidSubscriptionIDs(ctx context.Context, db *sql.DB) (map[string]bool, erro
 func ListSubscriptionPaymentsSince(ctx context.Context, db *sql.DB, since string) ([]SubscriptionPayment, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT p.yoo_payment_id, p.subscription_id, p.amount_value, p.flow, p.created_at,
-		       s.email, s.status, s.attribution, s.ga_client_id, s.ym_client_id
+		       s.email, s.status, s.attribution, s.ga_client_id, s.ym_client_id, COALESCE(NULLIF(s.currency, ''), 'RUB')
 		FROM subscription_payments p
 		JOIN subscriptions s ON s.id = p.subscription_id
 		WHERE p.created_at >= ? AND p.yoo_payment_id NOT LIKE 'mock-%'
@@ -501,7 +502,7 @@ func ListSubscriptionPaymentsSince(ctx context.Context, db *sql.DB, since string
 		var p SubscriptionPayment
 		var created string
 		if err := rows.Scan(&p.PaymentID, &p.SubscriptionID, &p.AmountValue, &p.Flow, &created,
-			&p.Email, &p.SubStatus, &p.Attribution, &p.GAClientID, &p.YMClientID); err != nil {
+			&p.Email, &p.SubStatus, &p.Attribution, &p.GAClientID, &p.YMClientID, &p.Currency); err != nil {
 			return nil, err
 		}
 		p.CreatedAt, _ = time.Parse(time.RFC3339, created)
@@ -683,6 +684,23 @@ func ActivateStripeSubscription(ctx context.Context, db *sql.DB, subID, stripeSu
 	}
 	n, _ := res.RowsAffected()
 	return n > 0, nil
+}
+
+// RecordStripeSubscriptionPayment записывает списание Stripe-подписки (invoice)
+// в subscription_payments, чтобы оно было в «Платежах подписок» админки. В
+// отличие от RecordSubscriptionPayment подписку не трогает: статус и срок
+// ведёт Stripe (ExtendStripeSubscription). Ключ — id invoice, повторный
+// вебхук ничего не дублирует. Флоу всегда «продление»: первый месяц либо
+// оплачен заказом, либо был trial на $0.
+func RecordStripeSubscriptionPayment(ctx context.Context, db *sql.DB, subID, invoiceID, amountValue string) error {
+	if invoiceID == "" {
+		return fmt.Errorf("subscriptions: empty invoice id")
+	}
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO subscription_payments (yoo_payment_id, subscription_id, amount_value, flow, created_at)
+		VALUES (?, ?, ?, ?, ?) ON CONFLICT(yoo_payment_id) DO NOTHING`,
+		invoiceID, subID, amountValue, SubFlowRebill, time.Now().UTC().Format(time.RFC3339))
+	return err
 }
 
 // ExtendStripeSubscription продлевает доступ по invoice.paid. Идемпотентно:
