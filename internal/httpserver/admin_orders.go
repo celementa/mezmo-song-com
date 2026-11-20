@@ -28,6 +28,12 @@ const (
 	PaymentKindFree             = "free"              // цена 0 без подписки (промо)
 )
 
+// PaymentKindOneTimeSubscribed — заказ оплачен деньгами, а после оплаты человек
+// оформил подписку (апсейл «безлимит»). Подписка привязана к заказу, но сумма
+// заказа — настоящая выручка; без отдельного типа он выглядел как песня
+// подписчика за $0.
+const PaymentKindOneTimeSubscribed = "one_time_subscribed"
+
 type adminOrderRow struct {
 	o                 store.Order
 	publicRef         string
@@ -71,6 +77,11 @@ func (s *Server) adminOrderRow(ctx context.Context, o store.Order) adminOrderRow
 	switch {
 	case o.SubscriptionID.Valid && o.SubscriptionID.String != "":
 		row.paymentKind = PaymentKindSubscriptionSong
+		if o.DiscountCode.String != store.SubscriptionDiscountCode {
+			// Песню подписчика метят SUBSCRIPTION с нулевой ценой; без метки
+			// подписка подключена к уже оплаченному заказу.
+			row.paymentKind = PaymentKindOneTimeSubscribed
+		}
 		// Песня подписчика — заказ на 0: отдаём цену подписки, её статус и
 		// платежи, чтобы было видно, платил ли человек вообще.
 		if sub, err := store.GetSubscription(ctx, s.DB, o.SubscriptionID.String); err == nil {

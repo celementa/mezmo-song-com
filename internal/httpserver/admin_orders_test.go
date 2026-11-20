@@ -90,3 +90,31 @@ func TestAdminOrdersCSVKeepsCurrencyAndProvider(t *testing.T) {
 		t.Fatalf("currency=%q provider=%q branch=%q", row[col["currency"]], row[col["payment_provider"]], row[col["payment_branch"]])
 	}
 }
+
+// Оплаченный заказ, к которому после оплаты подключили подписку (апсейл),
+// остаётся выручкой: тип one_time_subscribed, а не песня подписчика за 0.
+func TestAdminOrderRowOneTimeSubscribed(t *testing.T) {
+	s, id := newUnitPayTestServer(t, configForCSV())
+	ctx := context.Background()
+	if _, err := s.DB.ExecContext(ctx, `UPDATE orders SET payment_status = 'paid' WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.LinkOrderSubscription(ctx, s.DB, id, "sub_upsell"); err != nil {
+		t.Fatal(err)
+	}
+	o, err := store.GetOrder(ctx, s.DB, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.adminOrderRow(ctx, o).paymentKind; got != PaymentKindOneTimeSubscribed {
+		t.Fatalf("paymentKind = %q, want %q", got, PaymentKindOneTimeSubscribed)
+	}
+
+	if _, err := s.DB.ExecContext(ctx, `UPDATE orders SET discount_code = ? WHERE id = ?`, store.SubscriptionDiscountCode, id); err != nil {
+		t.Fatal(err)
+	}
+	o, _ = store.GetOrder(ctx, s.DB, id)
+	if got := s.adminOrderRow(ctx, o).paymentKind; got != PaymentKindSubscriptionSong {
+		t.Fatalf("песня подписчика: paymentKind = %q, want %q", got, PaymentKindSubscriptionSong)
+	}
+}

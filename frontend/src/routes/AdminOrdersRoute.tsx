@@ -5,8 +5,6 @@ import { AdminNav } from '@/components/admin/AdminNav'
 /** Сумма в валюте заказа: рубли и доллары не складываются и не пересчитываются. */
 const money = (n: number, currency?: string | null) =>
   currency === 'RUB' ? `${n.toLocaleString('ru-RU')} ₽` : `$${n.toLocaleString('en-US')}`
-/** Платежи подписок ЮKassa всегда в рублях. */
-const rub = (n: number) => money(n, 'RUB')
 
 /** Платёж подписки: у провайдера это обычный платёж, а в списке заказов его нет —
  * песни подписчиков идут заказами на 0. Без этого блока сверка «сколько денег
@@ -17,9 +15,17 @@ type SubscriptionPayment = {
   createdAt: string
   email: string
   amount: number
+  /** RUB — ЮKassa, USD — Stripe. */
+  currency: string
   flow: string
   subStatus: string
 }
+
+/** Итоги по валютам через запятую: «3 750 ₽, $50». */
+const moneyTotals = (totals: Record<string, number>) =>
+  Object.entries(totals)
+    .map(([cur, n]) => money(n, cur))
+    .join(', ') || money(0, 'RUB')
 
 const SUB_FLOW: Record<string, string> = {
   subscription_first: 'первый платёж',
@@ -34,7 +40,7 @@ const SUB_STATUS: Record<string, string> = {
 }
 
 function SubscriptionPayments() {
-  const [data, setData] = useState<{ days: number; total: number; payments: SubscriptionPayment[] } | null>(null)
+  const [data, setData] = useState<{ days: number; totals: Record<string, number>; payments: SubscriptionPayment[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
 
@@ -67,7 +73,7 @@ function SubscriptionPayments() {
       >
         <span className="text-gray-800">
           <span className="font-medium">Платежи подписок за {data?.days ?? 30} дн.:</span>{' '}
-          {data ? `${payments.length} на ${rub(data.total)}` : '…'}
+          {data ? `${payments.length} на ${moneyTotals(data.totals)}` : '…'}
           <span className="ml-2 text-xs text-gray-500">— в списке заказов их нет, песни подписчиков идут по $0</span>
         </span>
         <span className="text-xs text-gray-500">{open ? 'свернуть' : 'показать'}</span>
@@ -90,7 +96,7 @@ function SubscriptionPayments() {
                 <tr key={p.paymentId}>
                   <td className="whitespace-nowrap px-3 py-2 text-gray-600">{fmtDate(p.createdAt)}</td>
                   <td className="px-3 py-2 text-gray-800">{p.email}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-gray-800">{rub(p.amount)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-gray-800">{money(p.amount, p.currency)}</td>
                   <td className="px-3 py-2 text-gray-600">{SUB_FLOW[p.flow] ?? p.flow}</td>
                   <td className="px-3 py-2 text-gray-600">{SUB_STATUS[p.subStatus] ?? p.subStatus}</td>
                   <td className="px-3 py-2"><YooPaymentId id={p.paymentId} /></td>
@@ -126,7 +132,7 @@ type AdminOrder = {
   subscriptionPrice: number
   subscriptionStatus: string | null
   subscriptionPayments: { count: number; firstAt: string | null; lastFlow: string | null }
-  paymentKind: 'one_time' | 'subscription_song' | 'internal' | 'free'
+  paymentKind: 'one_time' | 'one_time_subscribed' | 'subscription_song' | 'internal' | 'free'
   paymentProvider: string | null
   paymentBranch: string | null
   currency: 'RUB' | 'USD'
@@ -265,6 +271,20 @@ function MoneyCell({ o }: { o: AdminOrder }) {
       </div>
     )
   }
+  if (o.paymentKind === 'one_time_subscribed') {
+    // Деньги по заказу настоящие, подписку человек оформил уже после оплаты.
+    return (
+      <div className="text-xs">
+        <div className="text-gray-800">разовая покупка</div>
+        <div className="text-gray-400">{o.paymentProvider ? (PROVIDER_LABEL[o.paymentProvider] ?? o.paymentProvider) : '—'}</div>
+        <div className="mt-1 inline-block rounded bg-violet-100 px-1.5 py-0.5 font-medium text-violet-700">+ оформил подписку</div>
+        <div className="text-gray-500">
+          {SUB_STATUS[o.subscriptionStatus ?? ''] ?? o.subscriptionStatus ?? '—'}
+          {o.subscriptionPrice > 0 ? `, ${money(o.subscriptionPrice, o.currency)}/мес` : ''}
+        </div>
+      </div>
+    )
+  }
   if (o.paymentKind === 'internal') return <div className="text-xs text-gray-500">тестовый, без оплаты</div>
   if (o.paymentKind === 'free') return <div className="text-xs text-gray-500">бесплатно</div>
   return (
@@ -309,6 +329,14 @@ function LandingUrl({ url }: { url: string | null }) {
  * подписки, см. блок «Платежи подписок»), и путать их нельзя.
  */
 function PriceCell({ o }: { o: AdminOrder }) {
+  if (o.paymentKind === 'one_time_subscribed') {
+    return (
+      <div>
+        <div>{money(o.basePrice, o.currency)}</div>
+        <div className="text-xs text-violet-700">+ подписка</div>
+      </div>
+    )
+  }
   if (o.subscribed || o.discountCode === 'SUBSCRIPTION') {
     return (
       <div>
@@ -449,6 +477,7 @@ const FILTERS = [
   { value: 'unpaid', label: 'Не оплачены' },
   { value: 'internal', label: 'Тестовые' },
   { value: 'subscription', label: 'По подписке' },
+  { value: 'subscribed', label: 'Оформили подписку' },
 ] as const
 
 export function AdminOrdersRoute() {
@@ -591,7 +620,10 @@ export function AdminOrdersRoute() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {orders.map((o) => (
-                <tr key={o.id} className="hover:bg-gray-50">
+                <tr
+                  key={o.id}
+                  className={o.paymentKind === 'one_time_subscribed' ? 'bg-violet-50 hover:bg-violet-100' : 'hover:bg-gray-50'}
+                >
                   <td className="whitespace-nowrap px-3 py-3 text-gray-600">{fmtDate(o.createdAt)}</td>
                   <td className="px-3 py-3">
                     <a href={`/order/${o.publicRef}`} className="font-mono text-xs text-rose-600 hover:underline">

@@ -508,6 +508,9 @@ const (
 	FilterUnpaid       = "unpaid"
 	FilterInternal     = "internal"
 	FilterSubscription = "subscription"
+	// FilterSubscribed — оплаченные заказы, после которых оформили подписку
+	// (апсейл «безлимит»): подписка привязана, но это не песня подписчика.
+	FilterSubscribed = "subscribed"
 )
 
 // OrderPage — запрос страницы списка заказов.
@@ -542,6 +545,9 @@ func (p OrderPage) where() (string, []any) {
 		args = append(args, InternalDiscountCode)
 	case FilterSubscription:
 		conds = append(conds, `discount_code = ?`)
+		args = append(args, SubscriptionDiscountCode)
+	case FilterSubscribed:
+		conds = append(conds, `COALESCE(subscription_id, '') <> '' AND COALESCE(discount_code, '') <> ?`)
 		args = append(args, SubscriptionDiscountCode)
 	}
 

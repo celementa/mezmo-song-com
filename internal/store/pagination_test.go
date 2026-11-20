@@ -143,3 +143,25 @@ func TestListOrdersSinceBoundsPeriod(t *testing.T) {
 		t.Fatalf("since 2026-08-01 = %v, want only ord_00", got)
 	}
 }
+
+// «Оформили подписку» — оплаченный заказ с привязанной подпиской; песня
+// подписчика (метка SUBSCRIPTION) в этот фильтр не попадает.
+func TestListOrdersPageFilterSubscribed(t *testing.T) {
+	ctx, db := testDB(t)
+	seedMany(t, ctx, db, 3)
+	if err := LinkOrderSubscription(ctx, db, "ord_01", "sub_upsell"); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE orders SET subscription_id = 'sub_song', discount_code = ? WHERE id = ?`,
+		SubscriptionDiscountCode, "ord_02"); err != nil {
+		t.Fatalf("mark subscription song: %v", err)
+	}
+
+	got, total, err := ListOrdersPage(ctx, db, OrderPage{Filter: FilterSubscribed, Limit: 50})
+	if err != nil {
+		t.Fatalf("filter subscribed: %v", err)
+	}
+	if total != 1 || len(got) != 1 || got[0].ID != "ord_01" {
+		t.Fatalf("filter subscribed: got %v (total %d), want ord_01", ids(got), total)
+	}
+}
