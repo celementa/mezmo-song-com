@@ -316,6 +316,9 @@ function GoldRender(data: LandingData) {
         </nav>
         <div className="flex items-center gap-3 md:gap-5">
           <LangSwitch />
+          <Link to={localePath('/account')} className="text-sm font-medium hover:opacity-70 transition" style={{ color: '#151210' }}>
+            {tr('Войти', 'Log in')}
+          </Link>
           <Link
             to={configHref}
             className="px-5 py-2.5 rounded-full text-white font-bold text-sm transition-all hover:opacity-90"
