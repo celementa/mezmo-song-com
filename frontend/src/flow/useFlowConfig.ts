@@ -33,6 +33,8 @@ export type FlowConfig = {
   priceRub: number
   priceUsd: number
   originalPrice: number
+  /** Зачёркнутая цена рублёвой ветки: долларовая в рублях не пересчитывается. */
+  originalPriceRub?: number
   speedupPrice: number
   stemsPrice: number
   deliveryDelayHours: number

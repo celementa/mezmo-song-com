@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Check } from 'lucide-react'
 
 import { StepShell } from '@/routes/create/StepShell'
-import { useTr } from '@/lib/lang'
+import { useLang, useTr } from '@/lib/lang'
 
 export type PaymentBranch = 'ru' | 'intl'
 
@@ -30,10 +30,34 @@ export function PaymentMethodStep({
   onChoose: (branch: PaymentBranch) => void
 }) {
   const tr = useTr()
+  const lang = useLang()
   const [choice, setChoice] = useState<PaymentBranch | null>(value)
   useEffect(() => {
     if (value) setChoice(value)
   }, [value])
+
+  const ruOption = (
+    <PaymentOption
+      key="ru"
+      selected={choice === 'ru'}
+      onSelect={() => setChoice('ru')}
+      flag="🇷🇺"
+      title={tr('Российская карта', 'Russian card')}
+      subtitle={tr('Оплата в рублях', 'Payment in rubles')}
+      methods={lang === 'en' ? ['Mir', 'SBP', 'SberPay', 'T-Pay', 'YooMoney'] : ['Мир', 'СБП', 'SberPay', 'T-Pay', 'ЮMoney']}
+    />
+  )
+  const intlOption = (
+    <PaymentOption
+      key="intl"
+      selected={choice === 'intl'}
+      onSelect={() => setChoice('intl')}
+      flag="🌍"
+      title={tr('Международная карта', 'International card')}
+      subtitle={tr('Оплата в долларах (USD)', 'Payment in US dollars (USD)')}
+      methods={['Visa', 'Mastercard', 'Apple Pay', 'Google Pay']}
+    />
+  )
 
   return (
     <StepShell
@@ -50,23 +74,10 @@ export function PaymentMethodStep({
       }}
       primaryDisabled={!choice || shell.busy}
     >
+      {/* На EN большинство платит международной картой — она первой, а названия
+          российских методов там латиницей. */}
       <div className="mt-4 grid gap-3" role="radiogroup" aria-label={tr('Способ оплаты', 'Payment method')}>
-        <PaymentOption
-          selected={choice === 'ru'}
-          onSelect={() => setChoice('ru')}
-          flag="🇷🇺"
-          title={tr('Российская карта', 'Russian card')}
-          subtitle={tr('Оплата в рублях', 'Payment in rubles')}
-          methods={['Мир', 'СБП', 'SberPay', 'T-Pay', 'ЮMoney']}
-        />
-        <PaymentOption
-          selected={choice === 'intl'}
-          onSelect={() => setChoice('intl')}
-          flag="🌍"
-          title={tr('Международная карта', 'International card')}
-          subtitle={tr('Оплата в долларах (USD)', 'Payment in US dollars (USD)')}
-          methods={['Visa', 'Mastercard', 'Apple Pay', 'Google Pay']}
-        />
+        {lang === 'en' ? [intlOption, ruOption] : [ruOption, intlOption]}
       </div>
       <p className="mt-4 text-xs leading-relaxed text-[#9c9186]">
         {tr(

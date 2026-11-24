@@ -628,6 +628,10 @@ export function useLandingData(options?: { hidePrices?: boolean }): LandingData 
   const [priceRub, setPriceRub] = useState<number | null>(990)
   const [originalUsd, setOriginalUsd] = useState<number | null>(_inlined.originalAmount ?? 75)
   const [originalRub, setOriginalRub] = useState<number | null>(2990)
+  // Цена плеча из ссылки (?arm=) приходит с сервера, а в первом кадре есть только
+  // базовая из вшитого снимка. Пока ответа нет, цены не рисуем: иначе человек по
+  // рекламной ссылке успевает увидеть $25 / 990 ₽ вместо цены своего плеча.
+  const [armPricePending, setArmPricePending] = useState(() => Boolean(new URLSearchParams(window.location.search).get('arm')))
 
   // Валюта витрины задаётся языком страницы: /ru — рубли, /en — доллары.
   // Переключателя больше нет, и курс не применяется — цены независимые.
@@ -833,11 +837,15 @@ export function useLandingData(options?: { hidePrices?: boolean }): LandingData 
         else setPublicSiteConfig(null)
         setInstantEnabled(typeof res?.instantEnabled === 'boolean' ? res.instantEnabled : null)
         setDeliveryDelayHours(typeof res?.deliveryDelayHours === 'number' ? res.deliveryDelayHours : null)
-        const usd = typeof res?.paymentAmountUsd === 'number'
-          ? res.paymentAmountUsd
-          : typeof res?.paymentAmount === 'number' ? res.paymentAmount : null
-        setPriceUsd(usd)
-        setPriceRub(typeof res?.paymentAmountRub === 'number' ? res.paymentAmountRub : 990)
+        // С плечом в ссылке цену задаёт только /api/public/flow ниже: без снимка
+        // настройки идут по сети и могут ответить позже, перетерев цену плеча базовой.
+        if (!armName) {
+          const usd = typeof res?.paymentAmountUsd === 'number'
+            ? res.paymentAmountUsd
+            : typeof res?.paymentAmount === 'number' ? res.paymentAmount : null
+          setPriceUsd(usd)
+          setPriceRub(typeof res?.paymentAmountRub === 'number' ? res.paymentAmountRub : 990)
+        }
         const originalUsdValue = typeof res?.originalAmountUsd === 'number'
           ? res.originalAmountUsd
           : typeof res?.originalAmount === 'number' ? res.originalAmount : null
@@ -857,7 +865,9 @@ export function useLandingData(options?: { hidePrices?: boolean }): LandingData 
           if (typeof cfg?.price === 'number') setPriceUsd(cfg.price)
           if (typeof cfg?.priceRub === 'number') setPriceRub(cfg.priceRub)
         })
+        // Сбой запроса — показываем базовую цену, как было до плеча в ссылке.
         .catch(() => {})
+        .finally(() => { if (!cancelled) setArmPricePending(false) })
     }
     return () => { cancelled = true }
   }, [])
@@ -1171,7 +1181,7 @@ export function useLandingData(options?: { hidePrices?: boolean }): LandingData 
   const pv = site.priceVisibility ?? {} as Loose
   // Один флаг на весь лендинг: главная (/ru, /en) показывает лендинг без цен,
   // а копия на /start — с ценами, без второй вёрстки.
-  const showPrice: ShowPrice = hidePrices
+  const showPrice: ShowPrice = hidePrices || armPricePending
     ? {
         promoBanner: false,
         header: false,

@@ -816,7 +816,11 @@ export function FlowRoute({
                 : config.intlProvider
           }
           legalEntity={paymentChoice?.branch ? legalEntityForBranch(paymentChoice.branch) : undefined}
-          original={paymentChoice?.currency === 'USD' ? config.originalPrice : null}
+          original={
+            paymentChoice?.currency === 'USD'
+              ? config.originalPrice
+              : paymentChoice?.currency === 'RUB' ? (config.originalPriceRub ?? null) : null
+          }
           perMonth={payVia === 'subscription'}
           summary={
             <ul className="space-y-1">

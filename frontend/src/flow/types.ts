@@ -101,8 +101,9 @@ export function answerFromWire(value: string): string {
 }
 
 /**
- * Жанры — доп. экран по ссылке «Выбрать жанр вместо этого». Шесть плиток без
- * акустики, электроники и классики (убраны в v11). id уходит в генерацию как
+ * Жанры — доп. экран по ссылке «Выбрать жанр вместо этого». Шесть плиток на язык:
+ * электроника и классика убраны в v11, акустика осталась только в EN вместо
+ * шансона. id уходит в генерацию как
  * musicPreferences.genre; `custom` открывает поле свободного описания стиля.
  */
 export const CUSTOM_GENRE = 'custom'
@@ -111,9 +112,16 @@ export const GENRES = [
   { id: 'Rock', label: 'Рок', en: 'Rock', icon: '🎸' },
   { id: 'Hip-Hop', label: 'Хип-хоп', en: 'Hip-Hop', icon: '🎧' },
   { id: 'R&B Soul', label: 'R&B', en: 'R&B', icon: '🎷' },
-  { id: 'Chanson', label: 'Шансон', en: 'Chanson', icon: '🪗' },
+  // Шансон зарубежному покупателю чужой — в EN на его месте акустика.
+  { id: 'Chanson', label: 'Шансон', en: 'Chanson', icon: '🪗', lang: 'ru' },
+  { id: 'Acoustic', label: 'Акустика', en: 'Acoustic', icon: '🪕', lang: 'en' },
   { id: CUSTOM_GENRE, label: 'Свой стиль', en: 'Custom style', icon: '✍️' },
 ] as const
+
+/** Плитки жанров для языка страницы: без плиток, помеченных другим языком. */
+export function genresFor(lang: 'ru' | 'en') {
+  return GENRES.filter((g) => !('lang' in g) || g.lang === lang)
+}
 
 /** Жанр для брифа: выбранная плитка либо текст «своего стиля». */
 export function resolveGenre(genre: string, customStyle: string): string {

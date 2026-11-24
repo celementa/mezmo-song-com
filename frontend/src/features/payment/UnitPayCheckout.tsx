@@ -340,9 +340,12 @@ export function UnitPayCheckout({
 }
 
 function RuLogos() {
+  // На EN названия методов латиницей: кириллица там читается как ошибка вёрстки.
+  const lang = useLang()
+  const methods = lang === 'en' ? ['Mir', 'SBP', 'SberPay', 'T-Pay', 'YooMoney'] : ['Мир', 'СБП', 'SberPay', 'T-Pay', 'ЮMoney']
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold text-[#5d554b]">
-      {['Мир', 'СБП', 'SberPay', 'T-Pay', 'ЮMoney'].map((m) => (
+      {methods.map((m) => (
         <span key={m} className="rounded-md border border-[#E7DAC5] bg-white px-1.5 py-0.5">{m}</span>
       ))}
     </div>

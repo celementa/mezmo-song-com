@@ -3150,7 +3150,7 @@ func publicSiteConfigRU() map[string]any {
 			"steps": []map[string]string{
 				{"icon": "✍️", "title": "Расскажите историю", "desc": "3 минуты на заполнение формы"},
 				{"icon": "🎵", "title": "Создаём песню", "desc": "Текст и музыку создаёт ИИ"},
-				{"icon": "📧", "title": "Доставляем на почту", "desc": "Менее чем за 24 часа"},
+				{"icon": "📧", "title": "Доставляем на почту", "desc": "За 10–30 минут"},
 			},
 		},
 		"faqSection": map[string]any{

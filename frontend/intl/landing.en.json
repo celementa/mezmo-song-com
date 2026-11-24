@@ -52,7 +52,7 @@
         "title": "We create the song"
       },
       {
-        "desc": "In less than 24 hours",
+        "desc": "In 10–30 minutes",
         "icon": "📧",
         "title": "Delivered to your inbox"
       }
@@ -106,7 +106,7 @@
       "quote": "I tried to hold back. I couldn't.",
       "verifiedBadgeText": "Verified order"
     },
-    "heroSubtext": "A personalized song built around your loved one's story and name. The lyrics and music are created by AI and delivered right away, not a day later."
+    "heroSubtext": "A personalized song built around your loved one's story and name. The lyrics and music are created by AI and delivered in 10–30 minutes, not a day later."
   },
   "miscText": {
     "ctaButtonText": "Create your song",

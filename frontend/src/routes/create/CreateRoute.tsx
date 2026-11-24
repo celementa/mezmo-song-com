@@ -262,6 +262,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(initial.previewUrl)
   const [price, setPrice] = useState(25)
   const [originalPrice, setOriginalPrice] = useState(75)
+  const [originalPriceRub, setOriginalPriceRub] = useState(2990)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -281,6 +282,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
     void apiGet<{
       price?: number
       originalPrice?: number
+      originalPriceRub?: number
       route?: string
       flowVariant?: string
       subscriptionsEnabled?: boolean
@@ -307,6 +309,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
         if (belongsHere && cfg?.flowVariant) setArm(cfg.flowVariant)
         if (belongsHere && typeof cfg?.price === 'number') setPrice(cfg.price)
         if (typeof cfg?.originalPrice === 'number') setOriginalPrice(cfg.originalPrice)
+        if (typeof cfg?.originalPriceRub === 'number') setOriginalPriceRub(cfg.originalPriceRub)
         if (belongsHere) return
         // Плечо не про эту воронку — цена из общих настроек, как и у сервера.
         void cachedSettingsGet<{ paymentAmount?: number }>('/api/public/settings').then((st) => {
@@ -510,7 +513,10 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
     setStepIndex((i) => Math.max(i - 1, 0))
   }, [stepId, stepIndex, track])
 
-  const canGoBack = stepIndex > 0 && !NO_BACK_STEPS.includes(stepId)
+  // В предоплатной воронке (v2) оплата стоит до вопросов о песне, и «Назад» с неё
+  // ничего не перезапускает: человек, выбравший не ту валюту, должен вернуться к
+  // выбору способа оплаты. Запрет из NO_BACK_STEPS — для оплаты после прослушивания.
+  const canGoBack = stepIndex > 0 && (!NO_BACK_STEPS.includes(stepId) || (variant === 'v2' && stepId === 'payment'))
 
   // --- серверные действия шагов ---
 
@@ -858,7 +864,7 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
     provider:
       order.provider ??
       (order.currency === 'RUB' ? 'yookassa' : 'stripe'),
-    originalPrice: order.currency === 'USD' ? originalPrice : 0,
+    originalPrice: order.currency === 'USD' ? originalPrice : order.currency === 'RUB' ? originalPriceRub : 0,
     onNext: goNext,
     onBack: goBack,
     canGoBack,

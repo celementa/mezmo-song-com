@@ -555,6 +555,7 @@ func (s *Server) handlePublicFlow(w http.ResponseWriter, r *http.Request) {
 		"priceUsd":             price,
 		"priceRub":             s.armPriceRub(ctx, arm),
 		"originalPrice":        originalPriceFromConfig(s.Config),
+		"originalPriceRub":     originalPriceRub,
 		"speedupPrice":         speedup,
 		"stemsPrice":           stems,
 		"subscriptionPrice":    s.armSubscriptionPriceUSD(ctx, arm),

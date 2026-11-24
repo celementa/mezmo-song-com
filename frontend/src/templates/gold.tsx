@@ -384,7 +384,7 @@ function GoldRender(data: LandingData) {
                 animation: 'pulse 1.4s infinite',
               }}
             />
-            {tr('Мария из Казани только что заказала песню', 'Maria from Kazan just ordered a song')}
+            {tr('Мария из Казани только что заказала песню', 'Maria just ordered a song')}
           </div>
 
           {/* Price badge: на главной цен нет, только на копии /start. */}
@@ -513,7 +513,7 @@ function GoldRender(data: LandingData) {
             }}
           >
             <div className="text-3xl font-bold" style={{ color: '#151210', fontFamily: "'Prata', serif" }}>
-              {tr('10 мин', '10 min')}
+              {tr('10–30 мин', '10–30 min')}
             </div>
             <div className="text-xs font-semibold mt-2" style={{ color: '#6b6558' }}>
               {tr('от заказа до доставки', 'from order to delivery')}
@@ -526,11 +526,13 @@ function GoldRender(data: LandingData) {
               background: '#fff',
             }}
           >
+            {/* Отзывы в Яндексе зарубежному покупателю ни о чём не говорят — в EN
+                на этом месте гарантия возврата, которую обещает FAQ. */}
             <div className="text-3xl font-bold" style={{ color: '#151210', fontFamily: "'Prata', serif" }}>
-              4.9★
+              {tr('4.9★', '100%')}
             </div>
             <div className="text-xs font-semibold mt-2" style={{ color: '#6b6558' }}>
-              {tr('отзывов в Яндекс', 'reviews on Yandex')}
+              {tr('отзывов в Яндекс', 'refund if you don\'t like it')}
             </div>
           </div>
         </div>
@@ -785,7 +787,7 @@ function GoldRender(data: LandingData) {
             {tr('От истории до слёз — 4 простых шага', 'From story to tears in 4 simple steps')}
           </h2>
           <p className="text-base max-w-2xl mx-auto" style={{ color: '#6b6558' }}>
-            {tr('Никаких скрытых условий и подписок — заплатили один раз, получили свою песню сразу', 'No hidden terms or subscriptions. Pay once and get your song right away')}
+            {tr('Никаких скрытых условий — песня будет готова через 10–30 минут после заказа', 'No hidden terms. Your song is ready 10–30 minutes after you order')}
           </p>
         </div>
 
@@ -962,10 +964,10 @@ function GoldRender(data: LandingData) {
               4
             </div>
             <h3 className="text-xl font-bold mb-2" style={{ color: '#151210', fontFamily: "'Prata', serif" }}>
-              {tr('Готовая песня — сразу', 'Your song, right away')}
+              {tr('Готовая песня за 10–30 минут', 'Your song in 10–30 minutes')}
             </h3>
             <p className="text-sm" style={{ color: '#6b6558' }}>
-              {tr('10–30 минут, без ожидания суток. Слушаете черновик, просите бесплатную правку, скачиваете финал и дарите.', '10–30 minutes, no waiting a day. Listen to the draft, ask for a free revision, download the final version and give it away.')}
+              {tr('Без ожидания суток. Слушаете песню, просите бесплатную правку, скачиваете финал и дарите.', 'No waiting a day. Listen to your song, ask for a free revision, download the final version and give it away.')}
             </p>
           </div>
           <div className="flex-1 order-2 md:order-1 w-full md:w-auto">
@@ -1177,7 +1179,7 @@ function GoldRender(data: LandingData) {
               {tr('У вас есть гарантии?', 'Do you offer guarantees?')}
             </div>
             <div className="text-sm mt-2" style={{ color: '#6b6558' }}>
-              {tr('99% клиентов остаются довольны и возвращаются к нам снова. Если вам не понравился результат, то мы вернем 100%. Достаточно написать нам в чат.', '99% of our customers are happy and come back to us again. If you don\'t like the result, we\'ll refund 100%. Just message us in the chat.')}
+              {tr('99% клиентов остаются довольны и возвращаются к нам снова. Если вам не понравился результат, то мы вернем 100%. Достаточно написать нам на support@mezmo-song.com.', '99% of our customers are happy and come back to us again. If you don\'t like the result, we\'ll refund 100%. Just email us at support@mezmo-song.com.')}
             </div>
           </div>
 

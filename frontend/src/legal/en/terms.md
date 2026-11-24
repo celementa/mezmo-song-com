@@ -1,6 +1,6 @@
 # Terms of Service (Public Offer)
 
-Last updated: November 9, 2026
+Last updated: November 24, 2026
 These Terms of Service (the "Terms") are a public offer made by Celementa FZCO, a company registered in the Dubai Silicon Oasis free zone with the Dubai Silicon Oasis Authority (DSOA), United Arab Emirates, registration number 16116518, address: Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE ("Mezmo", "we", "us" or "our"), to any person ("you" or the "Customer") to order personalized songs through the website mezmo-song.com (the "Site"). The Site, the song creation service and all related features are together called the "Service".
 
 ## Acceptance of these Terms
@@ -36,7 +36,7 @@ If a renewal charge fails, we may retry it. If payment cannot be collected, your
 ## Delivery
 
 Your Song is delivered electronically: it becomes available on your order page on the Site, and a link to it is sent to the email address you provided.
-Creating a Song usually takes from a few minutes to 24 hours, depending on system load. The estimated time is shown on the Site or in the order email.
+Creating a Song usually takes 10–30 minutes; it can take longer during peak hours. The estimated time is shown on the Site or in the order email.
 The Service is considered provided once the Song is available on your order page.
 If you have not received your Song within 48 hours after payment, please contact us (see "Contact details"). We will fix the problem or refund your payment.
 
@@ -47,13 +47,11 @@ After you receive your Song, you can request revisions on your order page: new l
 ## Refunds and cancellations
 
 **Before production starts.** You can cancel your order and receive a full refund if creation of your Song has not yet started.
-**After delivery.** Because a Song is digital content created individually for you, payment for a delivered Song is not refundable, except where:
+**Money-back guarantee.** If you don't like your delivered Song, contact us (see "Contact details") and we will refund 100% of what you paid for that order. We also give a full refund where:
 
 - the Song was not delivered within 48 hours after payment (see "Delivery");
-- the delivered file is defective (it does not play or does not match your order), and we were unable to fix it through a revision;
 - you were charged twice for the same order.
 
-**Right of withdrawal (EU, EEA and UK customers).** If you are a consumer in the European Union, the European Economic Area or the United Kingdom, you normally have a 14-day right to withdraw from a contract for digital content. Because your Song is made to your personal specifications and production begins immediately after payment, before payment you are asked to give your express consent to immediate performance and to acknowledge that you lose your right of withdrawal once production of the Song has begun. This does not affect your rights if the Song is not delivered or is defective.
 **Subscription.** At your request, we refund the subscription payment for the current billing period in which you contact us. Amounts charged for previous billing periods that have fully expired are not refundable.
 To request a refund, contact us (see "Contact details") and include your order number or the email address used for the order. We review requests within 10 business days. Approved refunds are made to the original payment method; the time it takes for the money to reach you depends on your bank.
 If the mandatory consumer protection laws of your country of residence give you more rights than these Terms, those laws apply.

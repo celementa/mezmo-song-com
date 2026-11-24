@@ -9,7 +9,7 @@
  */
 
 import { useLang, useTr } from '@/lib/lang'
-import { CUSTOM_GENRE, EMOTIONS, GENRES } from '../types'
+import { CUSTOM_GENRE, EMOTIONS, genresFor } from '../types'
 
 const inputClass =
   'w-full rounded-xl border border-[#E7DAC5] bg-[#FDFBF7] px-4 py-3 text-sm text-[#151210] outline-none transition placeholder:text-[#b4a893] focus:border-[#d9b978] focus:bg-white'
@@ -56,10 +56,11 @@ export function GenreGrid({
   onChange: (patch: { genre?: string; customStyle?: string }) => void
 }) {
   const tr = useTr()
+  const lang = useLang()
   return (
     <>
       <div className="grid grid-cols-3 gap-2.5">
-        {GENRES.map((g) => (
+        {genresFor(lang).map((g) => (
           <button key={g.id} type="button" onClick={() => onChange({ genre: g.id })} className={tileClass(genre === g.id)}>
             <span className="text-2xl leading-none">{g.icon}</span>
             <span className="text-xs font-semibold leading-tight text-[#3b352f]">{tr(g.label, g.en)}</span>
