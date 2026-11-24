@@ -106,4 +106,8 @@ jobs:
             curl -fsS -o /dev/null "https://mezmo-song.com$p" || { echo "не открывается $p" >&2; exit 1; }
           done
           curl -fsS "https://mezmo-song.com/api/public/flow?sid=ci-smoke" | grep -q '"steps"' || { echo "не отвечает /api/public/flow" >&2; exit 1; }
+          # Страницы отдаёт Go (internal/httpserver/spa.go): EN-head для превью и настоящий 404.
+          curl -fsS https://mezmo-song.com/en | grep -qF 'content="en_US"' || { echo "/en отдаёт не английский head" >&2; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://mezmo-song.com/ci-smoke-no-such-page)
+          [ "$code" = 404 ] || { echo "несуществующая страница отдаёт $code вместо 404" >&2; exit 1; }
           echo "mezmo-song.com отдаёт $entry"

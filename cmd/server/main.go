@@ -1,15 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"io"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
-	"strings"
-	"time"
 
 	"mezmo-song-com/internal/config"
 	"mezmo-song-com/internal/httpserver"
@@ -89,7 +85,7 @@ func main() {
 	// сюда nginx проксирует только /api и /admin. Страницы админки Go отдаёт
 	// сам — после adminAuth, — из той же папки, поэтому отдельной сборки и
 	// вшитого в бинарь фронта нет.
-	mux.Handle("/", spa(os.DirFS(cfg.StaticDir)))
+	mux.Handle("/", httpserver.SPAHandler(os.DirFS(cfg.StaticDir)))
 
 	// relay
 	if cfg.OpenRouterAPIKey != "" {
@@ -123,35 +119,4 @@ func main() {
 	addr := ":" + cfg.Port
 	log.Printf("ai-songs listening on %s  db=%s  url=%s", addr, cfg.DatabasePath, cfg.PublicAppURL)
 	log.Fatal(http.ListenAndServe(addr, adminAuth(cfg, mux)))
-}
-
-// spa отдаёт файлы фронта из content и index.html на любой другой путь.
-// index.html читается на каждый запрос: выкладка фронта меняет имена чанков,
-// и закэшированный при старте index ссылался бы на удалённые файлы.
-func spa(content fs.FS) http.Handler {
-	fileServer := http.FileServer(http.FS(content))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		p := strings.TrimPrefix(r.URL.Path, "/")
-		if p != "" && p != "index.html" {
-			if st, err := fs.Stat(content, p); err == nil && !st.IsDir() {
-				if strings.HasPrefix(p, "assets/") {
-					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-				}
-				fileServer.ServeHTTP(w, r)
-				return
-			}
-		}
-		indexHTML, err := fs.ReadFile(content, "index.html")
-		if err != nil {
-			log.Printf("spa: index.html: %v", err)
-			http.Error(w, "frontend not deployed", http.StatusServiceUnavailable)
-			return
-		}
-		w.Header().Set("Cache-Control", "no-cache")
-		http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(indexHTML))
-	})
 }

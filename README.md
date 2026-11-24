@@ -92,7 +92,7 @@ UnitPay подписок нет, пока их служба безопаснос
 - Разовая настройка сервера — `deploy/setup-server.sh`.
 
 Сервер: Ubuntu 20.04, nginx 1.18 из apt (`/etc/nginx/sites-available/mezmo-song.com`,
-SPA-фолбэк на `index.html`), Let's Encrypt через certbot с автопродлением.
+страницы SPA проксируются в Go — `location @spa`, английский head для `/en` и 404 — `internal/httpserver/spa.go`), Let's Encrypt через certbot с автопродлением.
 БД (SQLite) и песни — `/opt/mezmo-com/data`. DNS в GoDaddy: `@` и `www` → `109.248.42.189`.
 
 ## Что где

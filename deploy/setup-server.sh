@@ -38,6 +38,11 @@ if ! grep -q "mezmo-com-api.conf" "$SITE"; then
     { print }
   ' "$SITE" > "$SITE.new" && mv "$SITE.new" "$SITE"
 fi
+# Страницы SPA — через Go (location @spa в сниппете), а не index.html со статусом 200.
+if grep -q 'try_files $uri /index.html;' "$SITE"; then
+  cp -p "$SITE" "/root/mezmo-song.com.nginx.bak-$(date +%Y%m%d%H%M%S)"
+  sed -i 's#try_files $uri /index.html;#try_files $uri @spa;#' "$SITE"
+fi
 nginx -t
 systemctl reload nginx
 
