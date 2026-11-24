@@ -17,7 +17,8 @@ export type Company = {
   kpp?: string
   address: string
   email: string
-  phone: string
+  /** Телефона у FZCO нет: на /en связь только по email. */
+  phone?: string
   domain: string
 }
 
@@ -27,7 +28,6 @@ export const COMPANY: Company = {
   regNo: '16116518',
   address: 'Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE',
   email: 'support@mezmo-song.com',
-  phone: '+7 911 816-89-33',
   domain: 'mezmo-song.com',
 }
 

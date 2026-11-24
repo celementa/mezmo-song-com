@@ -22,7 +22,7 @@ export function ContactPage() {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">{tr('Контакты', 'Contact')}</h1>
         <p className="text-gray-500 mb-10">{tr('Вопросы по заказу и технической поддержке.', 'Questions about your order and technical support.')}</p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-12">
+        <div className={`grid grid-cols-1 ${company.phone ? 'sm:grid-cols-2' : ''} gap-6 mb-12`}>
           <a
             href={`mailto:${email}`}
             className="group flex flex-col items-center gap-3 rounded-xl border border-gray-200 p-6 text-center transition-all hover:border-rose-200 hover:shadow-md"
@@ -35,17 +35,19 @@ export function ContactPage() {
             <span className="text-sm font-medium text-rose-500">{email}</span>
           </a>
 
-          <a
-            href={`tel:${company.phone.replace(/[^\d+]/g, '')}`}
-            className="group flex flex-col items-center gap-3 rounded-xl border border-gray-200 p-6 text-center transition-all hover:border-rose-200 hover:shadow-md"
-          >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-500">
-              <Phone className="h-5 w-5" />
-            </div>
-            <h3 className="font-semibold text-gray-800">{tr('Телефон', 'Phone')}</h3>
-            <p className="text-sm text-gray-500">{tr('Обычно отвечаем в течение 1 рабочего дня', 'We usually reply within 1 business day')}</p>
-            <span className="text-sm font-medium text-rose-500">{company.phone}</span>
-          </a>
+          {company.phone && (
+            <a
+              href={`tel:${company.phone.replace(/[^\d+]/g, '')}`}
+              className="group flex flex-col items-center gap-3 rounded-xl border border-gray-200 p-6 text-center transition-all hover:border-rose-200 hover:shadow-md"
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-500">
+                <Phone className="h-5 w-5" />
+              </div>
+              <h3 className="font-semibold text-gray-800">{tr('Телефон', 'Phone')}</h3>
+              <p className="text-sm text-gray-500">{tr('Обычно отвечаем в течение 1 рабочего дня', 'We usually reply within 1 business day')}</p>
+              <span className="text-sm font-medium text-rose-500">{company.phone}</span>
+            </a>
+          )}
         </div>
 
         <div className="space-y-8 text-gray-600 text-[15px] leading-relaxed">

@@ -127,5 +127,4 @@ Registration number 16116518
 Registered by the Dubai Silicon Oasis Authority (DSOA), Dubai, United Arab Emirates
 Dubai Silicon Oasis, DDP, Building A2, 341041, Dubai, UAE
 Email: [support@mezmo-song.com](mailto:support@mezmo-song.com)
-Phone: +7 911 816-89-33
 Appendix 1: Information Security Policy (mezmo-song.com/security)

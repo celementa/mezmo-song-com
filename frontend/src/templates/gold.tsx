@@ -1282,8 +1282,12 @@ function GoldRender(data: LandingData) {
           ))}
           <div>
             <a href={`mailto:${company.email}`} className="hover:opacity-70 transition">{company.email}</a>
-            {' · '}
-            <a href={`tel:${company.phone.replace(/[^\d+]/g, '')}`} className="hover:opacity-70 transition">{company.phone}</a>
+            {company.phone && (
+              <>
+                {' · '}
+                <a href={`tel:${company.phone.replace(/[^\d+]/g, '')}`} className="hover:opacity-70 transition">{company.phone}</a>
+              </>
+            )}
           </div>
         </div>
 
