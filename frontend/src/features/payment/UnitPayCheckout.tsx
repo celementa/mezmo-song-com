@@ -235,10 +235,17 @@ export function UnitPayCheckout({
       error={error}
       eyebrow={tr('Оплата', 'Payment')}
       headline={tr('Ваш заказ', 'Your order')}
-      subhead={tr(
-        'Персональная песня по вашей истории: аудиофайл и текст, доступ навсегда.',
-        'A personal song based on your story: audio file and lyrics, lifetime access.',
-      )}
+      subhead={
+        perMonth
+          ? tr(
+              'Подписка: неограниченное число песен по вашим историям. Списание раз в месяц, отмена в любой момент.',
+              'Subscription: unlimited songs based on your stories. Billed monthly, cancel anytime.',
+            )
+          : tr(
+              'Персональная песня по вашей истории: аудиофайл и текст, доступ навсегда.',
+              'A personal song based on your story: audio file and lyrics, lifetime access.',
+            )
+      }
       primaryLabel={
         busy
           ? tr('Открываем оплату…', 'Opening payment…')
@@ -252,13 +259,24 @@ export function UnitPayCheckout({
           <span className="text-sm text-[#6b6259]">{tr('К оплате', 'Total')}</span>
           <span className="text-2xl font-bold text-[#151210]">
             {money(amount)}
-            {original && original > amount ? (
+            {/* Зачёркнутая — цена разовой песни; рядом с ценой в месяц она путает. */}
+            {original && original > amount && !perMonth ? (
               <span className="ml-2 text-sm font-normal text-[#b4a893] line-through">{formatMoney(original, currency)}</span>
             ) : null}
           </span>
         </div>
         {summary ? <div className="mt-3 text-xs text-[#6b6259]">{summary}</div> : null}
       </div>
+
+      {/* Условия автосписания до оплаты — то же, что в разделе «Подписка» оферты. */}
+      {perMonth ? (
+        <p className="mt-4 rounded-2xl border border-[#EFE4D2] bg-[#FDFBF7] p-3.5 text-xs leading-relaxed text-[#6b6259]">
+          {tr(
+            `Подписка продлевается автоматически: ${formatMoney(amount, currency)} списывается с карты каждый месяц, пока вы её не отмените. Отменить можно в любой момент в личном кабинете или по ссылке в письме — доступ сохранится до конца оплаченного периода.`,
+            `Your subscription renews automatically: ${formatMoney(amount, currency)} is charged to your card every month until you cancel. You can cancel anytime in your account or via the link in our emails, and access continues until the end of the paid period.`,
+          )}
+        </p>
+      ) : null}
 
       {/* Российская ветка: VPN ломает оплату — банк видит зарубежный IP и
           отклоняет платёж. Предупреждаем до нажатия «Оплатить», а не после. */}

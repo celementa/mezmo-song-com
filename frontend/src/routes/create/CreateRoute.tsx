@@ -279,6 +279,10 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
     // воронку (зашли по прямой ссылке ?v=), сервер заводит заказ по env-цене —
     // тогда и на витрине остаётся она.
     const sid = getSessionId()
+    // Плечо из ссылки важнее куки: /create?v=2&arm=variant4-990 должен получить
+    // шаги и цены именно этого плеча (сервер заодно закрепит его за браузером).
+    const urlArm = new URLSearchParams(window.location.search).get('arm')
+    const armQuery = urlArm ? `&arm=${encodeURIComponent(urlArm)}` : ''
     void apiGet<{
       price?: number
       originalPrice?: number
@@ -289,7 +293,8 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
       subscriptionPrice?: number
       subscriptionPriceRub?: number
       compareDefault?: 'subscription' | 'onetime' | ''
-    }>(`/api/public/flow?sid=${encodeURIComponent(sid)}`)
+      steps?: string[]
+    }>(`/api/public/flow?sid=${encodeURIComponent(sid)}${armQuery}`)
       .then((cfg) => {
         if (!alive) return
         setSubscriptionsEnabled(cfg?.subscriptionsEnabled === true)
@@ -302,8 +307,11 @@ function CreateFlow({ variant }: { variant: FlowVariant }) {
         } else if (typeof cfg?.subscriptionPrice === 'number') {
           setSubscriptionPrice(cfg.subscriptionPrice)
         }
-        if (cfg?.flowVariant?.includes('500-750s')) setCompareEnabled(true)
         const belongsHere = typeof cfg?.route === 'string' && cfg.route.startsWith('/create')
+        // Экран «подписка / разовая» — только если его отдаёт сервер для плеча этой
+        // воронки. Раньше его включало имя плеча из куки: человек с кукой от ссылки
+        // на variant3-500-750s видел его и в variant4-990, с одинаковыми ценами.
+        if (belongsHere && cfg?.steps?.includes('compare')) setCompareEnabled(true)
         // Плечо пишем только если ротация действительно привела в эту воронку —
         // прямые заходы по ?v= не должны пачкать разрез теста.
         if (belongsHere && cfg?.flowVariant) setArm(cfg.flowVariant)

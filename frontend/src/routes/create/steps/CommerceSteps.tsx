@@ -119,6 +119,7 @@ export function PaymentStep(p: StepProps & { start: (mode: PaymentMode) => Promi
       provider={p.provider}
       legalEntity={p.order.paymentBranch ? legalEntityForBranch(p.order.paymentBranch) : undefined}
       original={p.originalPrice}
+      perMonth={p.order.paymentPlan === 'subscription'}
       summary={
         p.form.email ? <p>{tr(`Ссылка на песню придёт на ${p.form.email}`, `The song link will be sent to ${p.form.email}`)}</p> : null
       }
